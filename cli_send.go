@@ -23,14 +23,16 @@ func (cli *CLI) send(from, to string, amount int) {
 	wallet := wallets.GetWallet(from)
 
 	tx := NewUTXOTransaction(&wallet, to, amount, &UTXOSet)
+	sendTx("", tx)
+	fmt.Println("send to ")
 
-	nodesInfo := NewNodesInfo()
-	for _, node := range nodesInfo[localNodeAddress].Nodes {
-		if node != localNodeAddress {
-			sendTx(node, tx)
-			fmt.Printf("send to %s\n", node)
-		}
-	}
+	// nodesInfo := NewNodesInfo()
+	// for _, node := range nodesInfo[localNodeAddress].Nodes {
+	// 	if node != localNodeAddress {
+	//
+	//
+	// 	}
+	// }
 
 	fmt.Printf("Success!\n")
 }

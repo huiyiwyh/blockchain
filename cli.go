@@ -44,7 +44,6 @@ func (cli *CLI) Run() {
 	reindexUTXOCmd := flag.NewFlagSet("reindexutxo", flag.ExitOnError)
 	sendCmd := flag.NewFlagSet("send", flag.ExitOnError)
 	startNodeCmd := flag.NewFlagSet("startnode", flag.ExitOnError)
-	listNodesInfoCmd := flag.NewFlagSet("listnodesinfo", flag.ExitOnError)
 
 	getBalanceAddress := getBalanceCmd.String("address", "", "The address to get balance for")
 	createBlockchainAddress := createBlockchainCmd.String("address", "", "The address to send genesis block reward to")
@@ -97,11 +96,6 @@ func (cli *CLI) Run() {
 		}
 	case "startnode":
 		err := startNodeCmd.Parse(os.Args[2:])
-		if err != nil {
-			log.Panic(err)
-		}
-	case "listnodesinfo":
-		err := listNodesInfoCmd.Parse(os.Args[2:])
 		if err != nil {
 			log.Panic(err)
 		}
@@ -161,9 +155,5 @@ func (cli *CLI) Run() {
 
 	if startNodeCmd.Parsed() {
 		cli.startNode(*startNodeMiner)
-	}
-
-	if listNodesInfoCmd.Parsed() {
-		cli.listNodesInfo()
 	}
 }

@@ -26,6 +26,7 @@ type Blockchain struct {
 	// db  *bolt.DB
 }
 
+// CreateOrLoadBlockChaindb ...
 func CreateOrLoadBlockChaindb() {
 	db, err := bolt.Open(blockchaindbFile, 0600, nil)
 	if err != nil {
@@ -58,7 +59,7 @@ func CreateBlockchain(address string) *Blockchain {
 			log.Panic(err)
 		}
 
-		err = b.Put(genesis.Hash, Serialize(genesis))
+		err = b.Put(genesis.Hash, genesis.Serialize())
 		if err != nil {
 			log.Panic(err)
 		}
@@ -129,7 +130,7 @@ func (bc *Blockchain) AddBlock(newBlock *Block) {
 			return nil
 		}
 
-		newBlockData := Serialize(newBlock)
+		newBlockData := newBlock.Serialize()
 
 		lastHash := b.Get([]byte("l"))
 		lastBlockData := b.Get(lastHash)
@@ -150,7 +151,7 @@ func (bc *Blockchain) AddBlock(newBlock *Block) {
 			bci := bc.Iterator(bc.tip)
 			for {
 				block := bci.Next()
-				if compareHash(block.Hash, newBlock.BlockHeader.PrevBlockHash) && block.Height+1 == newBlock.Height {
+				if CompareHash(block.Hash, newBlock.BlockHeader.PrevBlockHash) && block.Height+1 == newBlock.Height {
 					err := b.Put(newBlock.Hash, newBlockData)
 					if err != nil {
 						log.Panic(err)
@@ -170,7 +171,7 @@ func (bc *Blockchain) AddBlock(newBlock *Block) {
 
 		// as mainchain to be added
 		if newBlock.Height == lastBlock.Height+1 {
-			if compareHash(newBlock.BlockHeader.PrevBlockHash, lastBlock.Hash) {
+			if CompareHash(newBlock.BlockHeader.PrevBlockHash, lastBlock.Hash) {
 				err := b.Put(newBlock.Hash, newBlockData)
 				if err != nil {
 					log.Panic(err)
@@ -188,7 +189,7 @@ func (bc *Blockchain) AddBlock(newBlock *Block) {
 		c := o.Cursor()
 		for hashByte, blockDataByte := c.First(); hashByte != nil; hashByte, blockDataByte = c.Next() {
 			block := DeserializeBlock(blockDataByte)
-			if compareHash(block.BlockHeader.PrevBlockHash, newBlock.Hash) {
+			if CompareHash(block.BlockHeader.PrevBlockHash, newBlock.Hash) {
 				err := b.Put(hashByte, blockDataByte)
 				if err != nil {
 					log.Panic(err)
@@ -196,14 +197,14 @@ func (bc *Blockchain) AddBlock(newBlock *Block) {
 
 				o.Delete(hashByte)
 
-				if compareHash(b.Get([]byte("l")), newBlock.Hash) {
+				if CompareHash(b.Get([]byte("l")), newBlock.Hash) {
 					err = b.Put([]byte("l"), block.Hash)
 					if err != nil {
 						log.Panic(err)
 					}
 				} else {
 					for i := 1; i < isAllowedSideChainNum; i++ {
-						if compareHash(b.Get([]byte(IntToByte(i))), newBlock.Hash) {
+						if CompareHash(b.Get([]byte(IntToByte(i))), newBlock.Hash) {
 							err = b.Put([]byte(IntToByte(i)), block.Hash)
 							if err != nil {
 								log.Panic(err)
@@ -357,7 +358,7 @@ func (bc *Blockchain) GetBlockHash() []byte {
 	return bc.GetLastBlock().Hash
 }
 
-// GetBlock finds a block by its hash and returns it
+// GetBlockByHash finds a block by its hash and returns it
 func (bc *Blockchain) GetBlockByHash(blockHash []byte) (*Block, error) {
 	db, err := bolt.Open(blockchaindbFile, 0600, nil)
 	if err != nil {
@@ -463,6 +464,7 @@ func (bc *Blockchain) VerifyTransaction(tx *Transaction) bool {
 	return tx.Verify(prevTXs)
 }
 
+// NewSideChainIndex returns the index of the new side chain
 func (bc *Blockchain) NewSideChainIndex(b *bolt.Bucket) int {
 	for i := 1; i <= isAllowedSideChainNum; i++ {
 		if b.Get([]byte(IntToByte(i))) == nil {
@@ -474,6 +476,7 @@ func (bc *Blockchain) NewSideChainIndex(b *bolt.Bucket) int {
 	return newIndex
 }
 
+// GetCurrentOldestSideChain get current oldest side chain
 func (bc *Blockchain) GetCurrentOldestSideChain(b *bolt.Bucket) int {
 	lastHash := b.Get([]byte("l"))
 	blockData := b.Get(lastHash)
@@ -501,7 +504,7 @@ func (bc *Blockchain) GetCurrentOldestSideChain(b *bolt.Bucket) int {
 		if sideLastBlock.Height < lowestSideChainHeight {
 			lowestSideChainHeight = sideLastBlock.Height
 
-			for k, _ := range tmpIndex {
+			for k := range tmpIndex {
 				delete(tmpIndex, k)
 			}
 
@@ -512,7 +515,7 @@ func (bc *Blockchain) GetCurrentOldestSideChain(b *bolt.Bucket) int {
 	sideChainIndex = tmpIndex
 
 	if len(sideChainIndex) == 1 {
-		for k, _ := range sideChainIndex {
+		for k := range sideChainIndex {
 			bc.DeleteOldestSideChain(b, k)
 			return k
 		}
@@ -524,7 +527,7 @@ func (bc *Blockchain) GetCurrentOldestSideChain(b *bolt.Bucket) int {
 
 	tmpIndex = sideChainIndex
 
-	for k, _ := range sideChainIndex {
+	for k := range sideChainIndex {
 		forkBlockHeight := bc.GetForkBlockHeight(b, k)
 
 		if forkBlockHeight > lowestforkBlockHeight {
@@ -538,7 +541,7 @@ func (bc *Blockchain) GetCurrentOldestSideChain(b *bolt.Bucket) int {
 		if forkBlockHeight < lowestforkBlockHeight {
 			lowestforkBlockHeight = forkBlockHeight
 
-			for k, _ := range tmpIndex {
+			for k := range tmpIndex {
 				delete(tmpIndex, k)
 			}
 
@@ -549,7 +552,7 @@ func (bc *Blockchain) GetCurrentOldestSideChain(b *bolt.Bucket) int {
 	sideChainIndex = tmpIndex
 
 	if len(sideChainIndex) == 1 {
-		for k, _ := range sideChainIndex {
+		for k := range sideChainIndex {
 			bc.DeleteOldestSideChain(b, k)
 			return k
 		}
@@ -561,7 +564,7 @@ func (bc *Blockchain) GetCurrentOldestSideChain(b *bolt.Bucket) int {
 
 	newIndex := 0
 
-	for k, _ := range sideChainIndex {
+	for k := range sideChainIndex {
 		sideLastHash := b.Get([]byte(IntToByte(k)))
 		sideBlockData := b.Get([]byte(sideLastHash))
 		sideLastBlock := DeserializeBlock(sideBlockData)
@@ -580,6 +583,7 @@ func (bc *Blockchain) GetCurrentOldestSideChain(b *bolt.Bucket) int {
 	return newIndex
 }
 
+// DeleteOldestSideChain delete side chain which is the oldest
 func (bc *Blockchain) DeleteOldestSideChain(b *bolt.Bucket, sideChainIndex int) {
 	forkHeight := bc.GetForkBlockHeight(b, sideChainIndex)
 
@@ -597,6 +601,7 @@ func (bc *Blockchain) DeleteOldestSideChain(b *bolt.Bucket, sideChainIndex int) 
 	b.Delete([]byte(IntToByte(sideChainIndex)))
 }
 
+// GetForkBlockHeight get fork height of blockchain
 func (bc *Blockchain) GetForkBlockHeight(b *bolt.Bucket, sideChainIndex int) int {
 	height := 0
 

@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// BlockVersion ...
 const BlockVersion int = 1
 
 // Block represents a block in the blockchain
@@ -18,6 +19,7 @@ type Block struct {
 	Height          int
 }
 
+// BlockHeader represents a blockheader in the block
 type BlockHeader struct {
 	Version        int
 	PrevBlockHash  []byte
@@ -62,7 +64,7 @@ func (b *Block) HashTransactions() []byte {
 }
 
 // Serialize serializes the block
-func Serialize(b *Block) []byte {
+func (b *Block) Serialize() []byte {
 	var result bytes.Buffer
 	encoder := gob.NewEncoder(&result)
 
@@ -75,12 +77,13 @@ func Serialize(b *Block) []byte {
 }
 
 // DeserializeBlock deserializes a block
-func DeserializeBlock(data []byte) *Block {
+func DeserializeBlock(d []byte) *Block {
 	var block Block
 
-	decoder := gob.NewDecoder(bytes.NewReader(data))
+	decoder := gob.NewDecoder(bytes.NewReader(d))
 	err := decoder.Decode(&block)
 	if err != nil {
+		log.Panic(err)
 	}
 
 	return &block

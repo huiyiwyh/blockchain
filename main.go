@@ -25,8 +25,6 @@ func main() {
 
 	localNodeAddress = fmt.Sprintf(localNodeAddress + ":3000")
 	CreateOrLoadBlockChaindb()
-	CreateOrLoadNodesInfodb()
-	CreateNodesInfo()
 
 	cli := CLI{}
 	cli.Run()

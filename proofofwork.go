@@ -34,11 +34,6 @@ func NewProofOfWork(b *Block) *ProofOfWork {
 }
 
 func (pow *ProofOfWork) prepareData(nonce int) []byte {
-	fmt.Println("pow.block.BlockHeader.PrevBlockHash", pow.block.BlockHeader.PrevBlockHash)
-	fmt.Println("pow.block.HashTransactions()", pow.block.HashTransactions())
-	fmt.Println("IntToHex(pow.block.BlockHeader.Timestamp)", IntToHex(pow.block.BlockHeader.Timestamp))
-	fmt.Println("IntToHex(int64(pow.block.BlockHeader.Bits))", IntToHex(int64(pow.block.BlockHeader.Bits)))
-	fmt.Println("IntToHex(int64(nonce))", IntToHex(int64(nonce)))
 	data := bytes.Join(
 		[][]byte{
 			pow.block.BlockHeader.PrevBlockHash,
@@ -89,14 +84,9 @@ CalculateNonce:
 func (pow *ProofOfWork) Validate() bool {
 	var hashInt big.Int
 
-	fmt.Println(pow.block.BlockHeader)
-
 	data := pow.prepareData(pow.block.BlockHeader.Nonce)
-	fmt.Println("pow.prepareData(pow.block.BlockHeader.Nonce)", data)
 	hash := sha256.Sum256(data)
-	fmt.Println("sha256.Sum256(data)", hash)
 	hashInt.SetBytes(hash[:])
-	fmt.Println("hashInt.SetBytes(hash[:])", hashInt)
 
 	isValid := hashInt.Cmp(pow.target) == -1
 

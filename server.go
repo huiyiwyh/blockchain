@@ -21,12 +21,15 @@ var miningAddress string
 
 var blocksInTransit = [][]byte{}
 
+// receiveBlockChan ...
 var receiveBlockChan chan bool = make(chan bool)
 
+// Mining ...
 var Mining bool = false
 
 var mp = &Mempool{make(map[string]*Transaction), 0, new(sync.Mutex)}
 
+// Mempool ...
 type Mempool struct {
 	mempool map[string]*Transaction
 	txNums  int
@@ -70,12 +73,6 @@ type wallet struct {
 	Wallets  []string
 }
 
-type nodesinfo struct {
-	NodeFrom  string
-	IsReceive bool
-	NodesInfo NodesInfo
-}
-
 func commandToBytes(command string) []byte {
 	var bytes [commandLength]byte
 
@@ -103,15 +100,12 @@ func extractCommand(request []byte) []byte {
 }
 
 func requestBlocks() {
-	nodesInfo := NewNodesInfo()
 
-	for _, node := range nodesInfo[localNodeAddress].Nodes {
-		sendGetBlocks(node)
-	}
+	//sendGetBlocks(node)
 }
 
 func sendBlock(nodeTo string, b *Block) {
-	data := block{localNodeAddress, Serialize(b)}
+	data := block{localNodeAddress, b.Serialize()}
 	payload := gobEncode(data)
 	request := append(commandToBytes("block"), payload...)
 
@@ -122,18 +116,6 @@ func sendData(nodeTo string, data []byte) {
 	conn, err := net.Dial(protocol, nodeTo)
 	if err != nil {
 		fmt.Printf("%s is not available\n", nodeTo)
-
-		updateNodesInfo := make(map[string]*NodeInfo)
-
-		nodesInfo := NewNodesInfo()
-		for _, nodeAddress := range nodesInfo[localNodeAddress].Nodes {
-			if nodeAddress != nodeTo {
-				updateNodesInfo[localNodeAddress] = nodesInfo[localNodeAddress]
-				updateNodesInfo[localNodeAddress].Nodes[nodeTo] = nodeTo
-			}
-		}
-
-		UpdateNodesInfo(updateNodesInfo)
 
 		return
 	}
@@ -171,13 +153,6 @@ func sendTx(nodeTo string, tnx *Transaction) {
 	data := tx{localNodeAddress, tnx.Serialize()}
 	payload := gobEncode(data)
 	request := append(commandToBytes("tx"), payload...)
-
-	sendData(nodeTo, request)
-}
-
-func sendNodesInfo(nodeTo string, isReceive bool, nodesInfo NodesInfo) {
-	payload := gobEncode(nodesinfo{localNodeAddress, isReceive, nodesInfo})
-	request := append(commandToBytes("nodesinfo"), payload...)
 
 	sendData(nodeTo, request)
 }
@@ -351,13 +326,11 @@ func handleTx(request []byte) {
 
 	MempoolAddTxs(tx)
 
-	nodesInfo := NewNodesInfo()
-
-	for _, node := range nodesInfo[localNodeAddress].Nodes {
-		if node != localNodeAddress && node != payload.NodeFrom {
-			sendInv(node, "tx", [][]byte{tx.ID})
-		}
-	}
+	// for _, node := range nodesInfo[localNodeAddress].Nodes {
+	// 	if node != localNodeAddress && node != payload.NodeFrom {
+	// 		sendInv(node, "tx", [][]byte{tx.ID})
+	// 	}
+	// }
 	fmt.Println("txs in mempool's number :", MempoolGetTxNums())
 
 	if MempoolGetTxNums() > 1 {
@@ -387,11 +360,11 @@ func handleTx(request []byte) {
 
 		MempoolDeleteTxs(txs)
 
-		for _, node := range nodesInfo[localNodeAddress].Nodes {
-			if node != localNodeAddress {
-				sendInv(node, "block", [][]byte{newBlock.Hash})
-			}
-		}
+		// for _, node := range nodesInfo[localNodeAddress].Nodes {
+		// 	if node != localNodeAddress {
+		// 		sendInv(node, "block", [][]byte{newBlock.Hash})
+		// 	}
+		// }
 
 		if MempoolGetTxNums() > 0 {
 			goto MineTransactions
@@ -431,92 +404,6 @@ func handleVersion(request []byte) {
 	}
 }
 
-func handleNodesInfo(request []byte) {
-	var buff bytes.Buffer
-	var payload nodesinfo
-
-	buff.Write(request[commandLength:])
-	dec := gob.NewDecoder(&buff)
-	err := dec.Decode(&payload)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	fmt.Printf("Received nodesinfo command from %s\n", payload.NodeFrom)
-
-	nodesInfo := NewNodesInfo()
-	updateNodesInfo := make(map[string]*NodeInfo)
-
-	if payload.IsReceive {
-		for k, v := range payload.NodesInfo[payload.NodeFrom].Nodes {
-			if nodesInfo[payload.NodeFrom] == nil {
-				nodesInfo[payload.NodeFrom] = payload.NodesInfo[payload.NodeFrom]
-			} else {
-				nodesInfo[payload.NodeFrom].Nodes[k] = v
-			}
-
-		}
-
-		for k, v := range payload.NodesInfo[payload.NodeFrom].Wallets {
-			if nodesInfo[payload.NodeFrom] == nil {
-				nodesInfo[payload.NodeFrom] = payload.NodesInfo[payload.NodeFrom]
-			} else {
-				nodesInfo[payload.NodeFrom].Wallets[k] = v
-			}
-
-		}
-		updateNodesInfo[payload.NodeFrom] = nodesInfo[payload.NodeFrom]
-		UpdateNodesInfo(updateNodesInfo)
-
-		return
-	}
-
-	for nodeAddress, nodeInfo := range payload.NodesInfo {
-		if nodesInfo[nodeAddress] == nil {
-			nodesInfo[nodeAddress] = nodeInfo
-		} else {
-			for k, v := range nodeInfo.Nodes {
-				if nodesInfo[nodeAddress].Nodes[k] == "" {
-					nodesInfo[nodeAddress].Nodes[k] = v
-				}
-			}
-
-			for k, v := range nodeInfo.Wallets {
-				if nodesInfo[nodeAddress].Wallets[k] == "" {
-					nodesInfo[nodeAddress].Wallets[k] = v
-				}
-			}
-		}
-
-		updateNodesInfo[nodeAddress] = nodesInfo[nodeAddress]
-
-		for k, v := range nodeInfo.Nodes {
-			if nodesInfo[localNodeAddress].Nodes[k] == "" {
-				nodesInfo[localNodeAddress].Nodes[k] = v
-			}
-		}
-
-		for k, v := range nodeInfo.Wallets {
-			if nodesInfo[localNodeAddress].Wallets[k] == "" {
-				nodesInfo[localNodeAddress].Wallets[k] = v
-			}
-		}
-	}
-	updateNodesInfo[localNodeAddress] = nodesInfo[localNodeAddress]
-
-	UpdateNodesInfo(updateNodesInfo)
-
-	for _, nodeAddress := range nodesInfo[localNodeAddress].Nodes {
-		if IsNodeInfoDifferent(nodeAddress, nodesInfo[nodeAddress], nodesInfo[localNodeAddress]) {
-			sendNodesInfo(nodeAddress, false, nodesInfo)
-		} else if nodeAddress == payload.NodeFrom {
-			nodesInfotmp := make(map[string]*NodeInfo)
-			nodesInfotmp[localNodeAddress] = nodesInfo[localNodeAddress]
-			sendNodesInfo(nodeAddress, true, nodesInfotmp)
-		}
-	}
-}
-
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
 	request, err := ioutil.ReadAll(conn)
@@ -538,8 +425,6 @@ func handleConnection(conn net.Conn) {
 		handleTx(request)
 	case "version":
 		handleVersion(request)
-	case "nodesinfo":
-		handleNodesInfo(request)
 	default:
 		fmt.Printf("Unknown command!\n")
 	}
@@ -555,16 +440,7 @@ func StartServer(minerAddress string) {
 	}
 	defer ln.Close()
 
-	myBlockVersion, myBestHeight := GetLocalHeightAndVersion()
-
-	nodesInfo := NewNodesInfo()
-
-	for _, nodeAdress := range nodesInfo[localNodeAddress].Nodes {
-		if localNodeAddress != nodeAdress {
-			sendVersion(nodeAdress, myBlockVersion, myBestHeight)
-			sendNodesInfo(nodeAdress, false, nodesInfo)
-		}
-	}
+	//myBlockVersion, myBestHeight := GetLocalHeightAndVersion()
 
 	for {
 		conn, err := ln.Accept()
@@ -575,11 +451,13 @@ func StartServer(minerAddress string) {
 	}
 }
 
+// GetLocalHeightAndVersion ...
 func GetLocalHeightAndVersion() (int, int) {
 	bc := NewBlockchain()
 	return bc.GetBestHeight(), bc.GetVersion()
 }
 
+// MempoolAddTxs add txs into mempool
 func MempoolAddTxs(tx *Transaction) {
 	mp.Lock.Lock()
 	defer mp.Lock.Unlock()
@@ -592,6 +470,7 @@ func MempoolAddTxs(tx *Transaction) {
 	fmt.Println("a new tx has been send to mempool")
 }
 
+// MempoolDeleteTxs delete txs from mempool
 func MempoolDeleteTxs(txs []*Transaction) {
 	mp.Lock.Lock()
 	defer mp.Lock.Unlock()
@@ -606,6 +485,7 @@ func MempoolDeleteTxs(txs []*Transaction) {
 	}
 }
 
+// MempoolGetTxNums returns the number of txs in the mempool
 func MempoolGetTxNums() int {
 	mp.Lock.Lock()
 	defer mp.Lock.Unlock()
@@ -614,6 +494,7 @@ func MempoolGetTxNums() int {
 	return txNums
 }
 
+// MempoolVerifyTxs returns Transactions which is verified
 func MempoolVerifyTxs(bc *Blockchain) []*Transaction {
 	mp.Lock.Lock()
 	defer mp.Lock.Unlock()
