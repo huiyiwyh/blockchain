@@ -641,3 +641,8 @@ func (bc *Blockchain) GetForkBlockHeight(b *bolt.Bucket, sideChainIndex int) int
 
 	return height - 1
 }
+
+// AddBlock
+func AddBlock(block *Block) {
+	NewBlockchain().AddBlock(block)
+}

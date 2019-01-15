@@ -12,10 +12,6 @@ import (
 	"sync"
 )
 
-const protocol = "tcp"
-const commandLength = 12
-const termValidityOfBlock = 6
-
 var localNodeAddress string
 var miningAddress string
 
@@ -30,11 +26,6 @@ var Mining bool = false
 var mp = &Mempool{make(map[string]*Transaction), 0, new(sync.Mutex)}
 
 // Mempool ...
-type Mempool struct {
-	mempool map[string]*Transaction
-	txNums  int
-	Lock    *sync.Mutex
-}
 
 type block struct {
 	NodeFrom string
@@ -62,15 +53,10 @@ type tx struct {
 	Transaction []byte
 }
 
-type verzion struct {
+type version struct {
 	NodeFrom   string
 	Version    int
 	BestHeight int
-}
-
-type wallet struct {
-	NodeFrom string
-	Wallets  []string
 }
 
 func commandToBytes(command string) []byte {
@@ -99,32 +85,12 @@ func extractCommand(request []byte) []byte {
 	return request[:commandLength]
 }
 
-func requestBlocks() {
-
-	//sendGetBlocks(node)
-}
-
 func sendBlock(nodeTo string, b *Block) {
 	data := block{localNodeAddress, b.Serialize()}
 	payload := gobEncode(data)
 	request := append(commandToBytes("block"), payload...)
 
 	sendData(nodeTo, request)
-}
-
-func sendData(nodeTo string, data []byte) {
-	conn, err := net.Dial(protocol, nodeTo)
-	if err != nil {
-		fmt.Printf("%s is not available\n", nodeTo)
-
-		return
-	}
-	defer conn.Close()
-
-	_, err = io.Copy(conn, bytes.NewReader(data))
-	if err != nil {
-		log.Panic(err)
-	}
 }
 
 func sendInv(nodeTo, kind string, items [][]byte) {
@@ -158,11 +124,25 @@ func sendTx(nodeTo string, tnx *Transaction) {
 }
 
 func sendVersion(nodeTo string, blockVersion int, bestHeight int) {
-	payload := gobEncode(verzion{localNodeAddress, blockVersion, bestHeight})
+	payload := gobEncode(version{localNodeAddress, blockVersion, bestHeight})
 
 	request := append(commandToBytes("version"), payload...)
 
 	sendData(nodeTo, request)
+}
+
+func sendData(nodeTo string, data []byte) {
+	conn, err := net.Dial(protocol, nodeTo)
+	if err != nil {
+		fmt.Printf("%s is not available\n", nodeTo)
+		return
+	}
+	defer conn.Close()
+
+	_, err = io.Copy(conn, bytes.NewReader(data))
+	if err != nil {
+		log.Panic(err)
+	}
 }
 
 func handleBlock(request []byte) {
@@ -179,31 +159,29 @@ func handleBlock(request []byte) {
 	blockData := payload.Block
 	block := DeserializeBlock(blockData)
 
-	bc := NewBlockchain()
-
 	fmt.Printf("Recevied a new block!\n")
 
-	pow := NewProofOfWork(block)
-	if !pow.Validate() {
+	//
+	if !block.VerifyPoW() {
 		fmt.Printf("The block is invalid!\n")
+	}
+
+	if block.Height+termValidityOfBlock <= GetHeight() {
 		return
 	}
 
-	if block.Height+termValidityOfBlock <= bc.GetBestHeight() {
-		return
-	}
-
-	if block.Height > bc.GetBestHeight() {
+	if block.Height > GetHeight() {
 		receiveBlockChan <- true
 	}
 
-	bc.AddBlock(block)
+	NewBlockchain().AddBlock(block)
+	//
 
 	fmt.Printf("Added block %x\n", block.Hash)
 
 	txs := block.Transactions
 
-	MempoolDeleteTxs(txs)
+	mp.DeleteTxs(txs)
 
 	if len(blocksInTransit) > 0 {
 		blockHash := blocksInTransit[0]
@@ -211,6 +189,7 @@ func handleBlock(request []byte) {
 
 		blocksInTransit = blocksInTransit[1:]
 	} else {
+		bc := NewBlockchain()
 		UTXOSet := UTXOSet{bc}
 		UTXOSet.Reindex()
 	}
@@ -247,11 +226,11 @@ func handleInv(request []byte) {
 	if payload.Type == "tx" {
 		txID := payload.Items[0]
 
-		mp.Lock.Lock()
+		mp.mtx.Lock()
 		if mp.mempool[hex.EncodeToString(txID)] == nil {
 			sendGetData(payload.NodeFrom, "tx", txID)
 		}
-		mp.Lock.Unlock()
+		mp.mtx.Unlock()
 	}
 }
 
@@ -301,9 +280,9 @@ func handleGetData(request []byte) {
 	if payload.Type == "tx" {
 		txID := hex.EncodeToString(payload.ID)
 
-		mp.Lock.Lock()
+		mp.mtx.Lock()
 		tx := mp.mempool[txID]
-		mp.Lock.Unlock()
+		mp.mtx.Unlock()
 
 		sendTx(payload.NodeFrom, tx)
 	}
@@ -324,19 +303,19 @@ func handleTx(request []byte) {
 	txData := payload.Transaction
 	tx := DeserializeTransaction(txData)
 
-	MempoolAddTxs(tx)
+	mp.AddTxs(tx)
 
 	// for _, node := range nodesInfo[localNodeAddress].Nodes {
 	// 	if node != localNodeAddress && node != payload.NodeFrom {
 	// 		sendInv(node, "tx", [][]byte{tx.ID})
 	// 	}
 	// }
-	fmt.Println("txs in mempool's number :", MempoolGetTxNums())
+	fmt.Println("txs in mempool's number :", mp.GetTxNums())
 
-	if MempoolGetTxNums() > 1 {
+	if mp.GetTxNums() > 1 {
 	MineTransactions:
 		bc := NewBlockchain()
-		txs := MempoolVerifyTxs(bc)
+		txs := mp.VerifyTxs(bc)
 
 		if len(txs) == 0 {
 			fmt.Printf("All transactions are added into block! Waiting for new ones...\n")
@@ -358,7 +337,7 @@ func handleTx(request []byte) {
 		UTXOSet := UTXOSet{bc}
 		UTXOSet.Reindex()
 
-		MempoolDeleteTxs(txs)
+		mp.DeleteTxs(txs)
 
 		// for _, node := range nodesInfo[localNodeAddress].Nodes {
 		// 	if node != localNodeAddress {
@@ -366,7 +345,7 @@ func handleTx(request []byte) {
 		// 	}
 		// }
 
-		if MempoolGetTxNums() > 0 {
+		if mp.GetTxNums() > 0 {
 			goto MineTransactions
 		}
 	}
@@ -374,7 +353,7 @@ func handleTx(request []byte) {
 
 func handleVersion(request []byte) {
 	var buff bytes.Buffer
-	var payload verzion
+	var payload version
 
 	buff.Write(request[commandLength:])
 	dec := gob.NewDecoder(&buff)
@@ -385,14 +364,9 @@ func handleVersion(request []byte) {
 
 	fmt.Printf("Received version command from %s\n", payload.NodeFrom)
 
-	bc := NewBlockchain()
+	myBestHeight := GetHeight()
+	myBlockVersion := GetVersion()
 
-	if payload.Version < bc.GetVersion() {
-		return
-	}
-
-	myBestHeight := bc.GetBestHeight()
-	myBlockVersion := bc.GetVersion()
 	foreignerBestHeight := payload.BestHeight
 
 	if myBestHeight > foreignerBestHeight {
@@ -406,6 +380,7 @@ func handleVersion(request []byte) {
 
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
+
 	request, err := ioutil.ReadAll(conn)
 	if err != nil {
 		log.Panic(err)
@@ -440,7 +415,7 @@ func StartServer(minerAddress string) {
 	}
 	defer ln.Close()
 
-	//myBlockVersion, myBestHeight := GetLocalHeightAndVersion()
+	// myBlockVersion, myBestHeight := GetLocalHeightAndVersion()
 
 	for {
 		conn, err := ln.Accept()
@@ -451,64 +426,12 @@ func StartServer(minerAddress string) {
 	}
 }
 
-// GetLocalHeightAndVersion ...
-func GetLocalHeightAndVersion() (int, int) {
-	bc := NewBlockchain()
-	return bc.GetBestHeight(), bc.GetVersion()
+// GetHeight ...
+func GetHeight() int {
+	return NewBlockchain().GetBestHeight()
 }
 
-// MempoolAddTxs add txs into mempool
-func MempoolAddTxs(tx *Transaction) {
-	mp.Lock.Lock()
-	defer mp.Lock.Unlock()
-
-	if mp.mempool[hex.EncodeToString(tx.ID)] == nil {
-		mp.mempool[hex.EncodeToString(tx.ID)] = tx
-		mp.txNums++
-	}
-
-	fmt.Println("a new tx has been send to mempool")
-}
-
-// MempoolDeleteTxs delete txs from mempool
-func MempoolDeleteTxs(txs []*Transaction) {
-	mp.Lock.Lock()
-	defer mp.Lock.Unlock()
-
-	for _, tx := range txs {
-		txID := hex.EncodeToString(tx.ID)
-		if mp.mempool[txID] != nil {
-			delete(mp.mempool, txID)
-			mp.txNums--
-		}
-		fmt.Println("a tx was deleted from mempool")
-	}
-}
-
-// MempoolGetTxNums returns the number of txs in the mempool
-func MempoolGetTxNums() int {
-	mp.Lock.Lock()
-	defer mp.Lock.Unlock()
-
-	txNums := mp.txNums
-	return txNums
-}
-
-// MempoolVerifyTxs returns Transactions which is verified
-func MempoolVerifyTxs(bc *Blockchain) []*Transaction {
-	mp.Lock.Lock()
-	defer mp.Lock.Unlock()
-
-	var txs []*Transaction
-	for id := range mp.mempool {
-		tx := mp.mempool[id]
-		if bc.VerifyTransaction(tx) {
-			txs = append(txs, tx)
-		} else {
-			delete(mp.mempool, id)
-			mp.txNums--
-		}
-	}
-
-	return txs
+// GetVersion ...
+func GetVersion() int {
+	return NewBlockchain().GetVersion()
 }

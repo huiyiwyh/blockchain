@@ -88,3 +88,12 @@ func DeserializeBlock(d []byte) *Block {
 
 	return &block
 }
+
+// VerifyPoW ...
+func (block *Block) VerifyPoW() bool {
+	pow := NewProofOfWork(block)
+	if !pow.Validate() {
+		return false
+	}
+	return true
+}
