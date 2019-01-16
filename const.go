@@ -7,10 +7,13 @@ const protocol = "tcp"
 const commandLength = 12
 
 // termValidityOfBlock refers the block
-const termValidityOfBlock = 6
+const termValidityOfBlock int64 = 6
 
 // blockversion refers the blockversion
 const blockversion = byte(0x00)
 
 // addressChecksumLen defines the addressChecksumLen
 const addressChecksumLen = 4
+
+// MempoolMaxTxs defers maxTxs num in mempool
+const MempoolMaxTxs = 2

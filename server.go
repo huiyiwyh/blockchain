@@ -12,13 +12,18 @@ import (
 	"sync"
 )
 
+var blockChanFromServerToBlockChainManager chan *Block = make(chan *Block, 20)
+
+var txChanFromServerToMempool chan *Transaction = make(chan *Transaction, 20)
+
+var blocksHashChanFromServerToBlockChainManager chan bool = make(chan bool, 20)
+
+var blockHashChanFromServerToBlockChainManager chan []byte = make(chan []byte, 20)
+
 var localNodeAddress string
 var miningAddress string
 
 var blocksInTransit = [][]byte{}
-
-// receiveBlockChan ...
-var receiveBlockChan chan bool = make(chan bool)
 
 // Mining ...
 var Mining bool = false
@@ -56,7 +61,7 @@ type tx struct {
 type version struct {
 	NodeFrom   string
 	Version    int
-	BestHeight int
+	BestHeight int64
 }
 
 func commandToBytes(command string) []byte {
@@ -123,7 +128,7 @@ func sendTx(nodeTo string, tnx *Transaction) {
 	sendData(nodeTo, request)
 }
 
-func sendVersion(nodeTo string, blockVersion int, bestHeight int) {
+func sendVersion(nodeTo string, blockVersion int, bestHeight int64) {
 	payload := gobEncode(version{localNodeAddress, blockVersion, bestHeight})
 
 	request := append(commandToBytes("version"), payload...)
@@ -159,39 +164,15 @@ func handleBlock(request []byte) {
 	blockData := payload.Block
 	block := DeserializeBlock(blockData)
 
-	fmt.Printf("Recevied a new block!\n")
+	fmt.Printf("Recevied a new block! from %s\n", payload.NodeFrom)
 
-	//
-	if !block.VerifyPoW() {
-		fmt.Printf("The block is invalid!\n")
-	}
-
-	if block.Height+termValidityOfBlock <= GetHeight() {
-		return
-	}
-
-	if block.Height > GetHeight() {
-		receiveBlockChan <- true
-	}
-
-	NewBlockchain().AddBlock(block)
-	//
-
-	fmt.Printf("Added block %x\n", block.Hash)
-
-	txs := block.Transactions
-
-	mp.DeleteTxs(txs)
+	blockChanFromServerToBlockChainManager <- block
 
 	if len(blocksInTransit) > 0 {
 		blockHash := blocksInTransit[0]
 		sendGetData(payload.NodeFrom, "block", blockHash)
 
 		blocksInTransit = blocksInTransit[1:]
-	} else {
-		bc := NewBlockchain()
-		UTXOSet := UTXOSet{bc}
-		UTXOSet.Reindex()
 	}
 }
 
@@ -247,10 +228,11 @@ func handleGetBlocks(request []byte) {
 
 	fmt.Printf("Received getblocks command from %s\n", payload.NodeFrom)
 
-	bc := NewBlockchain()
+	blocksHashChanFromServerToBlockChainManager <- true
 
-	blocks := bc.GetBlockHashes()
-	sendInv(payload.NodeFrom, "block", blocks)
+	blocksHash := <-blocksHashChanFromBlockChainManagerToServer
+
+	sendInv(payload.NodeFrom, "block", blocksHash)
 }
 
 func handleGetData(request []byte) {
@@ -269,12 +251,11 @@ func handleGetData(request []byte) {
 	bc := NewBlockchain()
 
 	if payload.Type == "block" {
-		block, err := bc.GetBlockByHash([]byte(payload.ID))
-		if err != nil {
-			return
-		}
+		blockHashChanFromServerToBlockChainManager <- []byte(payload.ID)
 
-		sendBlock(payload.NodeFrom, block)
+		if block := <-blockHashChanFromBlockChainManagerToServer; block != nil {
+			sendBlock(payload.NodeFrom, block)
+		}
 	}
 
 	if payload.Type == "tx" {
@@ -299,56 +280,12 @@ func handleTx(request []byte) {
 		log.Panic(err)
 	}
 
-	fmt.Printf("\rReceived tx command from %s\n", payload.NodeFrom)
 	txData := payload.Transaction
 	tx := DeserializeTransaction(txData)
 
-	mp.AddTxs(tx)
+	fmt.Printf("Received tx command from %s\n", payload.NodeFrom)
 
-	// for _, node := range nodesInfo[localNodeAddress].Nodes {
-	// 	if node != localNodeAddress && node != payload.NodeFrom {
-	// 		sendInv(node, "tx", [][]byte{tx.ID})
-	// 	}
-	// }
-	fmt.Println("txs in mempool's number :", mp.GetTxNums())
-
-	if mp.GetTxNums() > 1 {
-	MineTransactions:
-		bc := NewBlockchain()
-		txs := mp.VerifyTxs(bc)
-
-		if len(txs) == 0 {
-			fmt.Printf("All transactions are added into block! Waiting for new ones...\n")
-			return
-		}
-
-		// create coinbaseTx and add into mempool
-		cbTx := NewCoinbaseTX(miningAddress, "")
-		txs = append(txs, cbTx)
-
-		Mining = true
-		newBlock := bc.MineBlock(txs)
-		Mining = false
-
-		if newBlock == nil {
-			return
-		}
-
-		UTXOSet := UTXOSet{bc}
-		UTXOSet.Reindex()
-
-		mp.DeleteTxs(txs)
-
-		// for _, node := range nodesInfo[localNodeAddress].Nodes {
-		// 	if node != localNodeAddress {
-		// 		sendInv(node, "block", [][]byte{newBlock.Hash})
-		// 	}
-		// }
-
-		if mp.GetTxNums() > 0 {
-			goto MineTransactions
-		}
-	}
+	txChanFromServerToMempool <- tx
 }
 
 func handleVersion(request []byte) {
@@ -427,8 +364,8 @@ func StartServer(minerAddress string) {
 }
 
 // GetHeight ...
-func GetHeight() int {
-	return NewBlockchain().GetBestHeight()
+func GetHeight() int64 {
+	return .GetBestHeight()
 }
 
 // GetVersion ...

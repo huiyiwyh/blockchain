@@ -9,8 +9,8 @@ func (cli *CLI) createBlockchain(address string) {
 		log.Panic("ERROR: Address is not valid")
 	}
 
-	bc := CreateBlockchain(address)
+	// bc := CreateBlockchain(address)
 
-	UTXOSet := UTXOSet{bc}
-	UTXOSet.Reindex()
+	// UTXOSet := UTXOSet{bc}
+	// UTXOSet.Reindex()
 }

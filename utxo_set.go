@@ -11,7 +11,7 @@ const utxoBucket = "chainstate"
 
 // UTXOSet represents UTXO set
 type UTXOSet struct {
-	Blockchain *Blockchain
+	Hash []byte
 }
 
 // FindSpendableOutputs finds and returns unspent outputs to reference in inputs

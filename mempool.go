@@ -6,9 +6,6 @@ import (
 	"sync"
 )
 
-var blockChan chan *Block = make(chan *Block, 20)
-var txChan chan *Transaction = make(chan *Transaction, 20)
-
 // Mempool stores txs and processes txs
 type Mempool struct {
 	mempool map[string]*Transaction
@@ -57,6 +54,28 @@ func (mp *Mempool) GetTxNums() int {
 func (mp *Mempool) VerifyTxs(bc *Blockchain) []*Transaction {
 	mp.mtx.Lock()
 	defer mp.mtx.Unlock()
+
+	var txs []*Transaction
+	for id := range mp.mempool {
+		tx := mp.mempool[id]
+		if bcm.VerifyTransaction(tx) {
+			txs = append(txs, tx)
+		} else {
+			delete(mp.mempool, id)
+			mp.txNums--
+		}
+	}
+
+	return txs
+}
+
+func (mp *Mempool) GetTxsNumAndRetrieve() []*Transaction {
+	mp.mtx.Lock()
+	defer mp.mtx.Unlock()
+
+	if mp.txNums < MempoolMaxTxs {
+
+	}
 
 	var txs []*Transaction
 	for id := range mp.mempool {

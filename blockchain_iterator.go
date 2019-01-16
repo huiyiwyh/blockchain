@@ -9,7 +9,6 @@ import (
 // BlockchainIterator is used to iterate over blockchain blocks
 type BlockchainIterator struct {
 	currentHash []byte
-	//db          *bolt.DB
 }
 
 // Next returns next block starting from the tip
