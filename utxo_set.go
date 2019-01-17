@@ -50,8 +50,8 @@ func (u UTXOSet) FindSpendableOutputs(pubkeyHash []byte, amount int) (int, map[s
 	return accumulated, unspentOutputs
 }
 
-// FindUTXO finds UTXO for a public key hash
-func (u UTXOSet) FindUTXO(pubKeyHash []byte) []TXOutput {
+// FindUTXOByHash finds UTXO for a public key hash
+func (u UTXOSet) FindUTXOByHash(pubKeyHash []byte) []TXOutput {
 	var UTXOs []TXOutput
 
 	db, err := bolt.Open(blockchaindbFile, 0600, nil)
@@ -166,7 +166,7 @@ func (u UTXOSet) Updateindex(UTXO map[string]TXOutputs) {
 // Reindex rebuilds the UTXO set
 func (u UTXOSet) Reindex() {
 	u.Deleteindex()
-	UTXO := u.Blockchain.FindUTXO()
+	UTXO := u.FindUTXO()
 	u.Updateindex(UTXO)
 }
 
@@ -226,4 +226,43 @@ func (u UTXOSet) Update(block *Block) {
 	if err != nil {
 		log.Panic(err)
 	}
+}
+
+// UTXOIterator is used to iterate over blockchain blocks
+type UTXOIterator struct {
+	currentHash []byte
+}
+
+// Next returns next block starting from the tip
+func (i *UTXOIterator) Next() *Block {
+	var block *Block
+
+	db, err := bolt.Open(blockchaindbFile, 0600, nil)
+	if err != nil {
+		log.Panic(err)
+	}
+	defer db.Close()
+
+	err = db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		blockdata := b.Get(i.currentHash)
+		block = DeserializeBlock(blockdata)
+
+		return nil
+	})
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	i.currentHash = block.BlockHeader.PrevBlockHash
+
+	return block
+}
+
+// Iterator returns a BlockchainIterat
+func (u UTXOSet) Iterator(lastHash []byte) *UTXOIterator {
+	ui := &UTXOIterator{lastHash}
+
+	return ui
 }

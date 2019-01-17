@@ -7,14 +7,6 @@ import (
 	"github.com/boltdb/bolt"
 )
 
-const blockchaindbFile = "blockchain.db"
-const blocksBucket = "blocks"
-const orphanBlocksBucket = "orphanblocks"
-const genesisCoinbaseData = "The Times 03/Jan/2009 Chancellor on brink of second bailout for banks"
-const isAllowedSideChainNum = 5
-
-var nextSideChainIndex int = 1
-
 // Blockchain implements interactions with a DB
 type Blockchain struct {
 	tip []byte

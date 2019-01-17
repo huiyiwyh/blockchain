@@ -9,28 +9,12 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
-	"sync"
 )
-
-var blockChanFromServerToBlockChainManager chan *Block = make(chan *Block, 20)
-
-var txChanFromServerToMempool chan *Transaction = make(chan *Transaction, 20)
-
-var blocksHashChanFromServerToBlockChainManager chan bool = make(chan bool, 20)
-
-var blockHashChanFromServerToBlockChainManager chan []byte = make(chan []byte, 20)
 
 var localNodeAddress string
 var miningAddress string
 
 var blocksInTransit = [][]byte{}
-
-// Mining ...
-var Mining bool = false
-
-var mp = &Mempool{make(map[string]*Transaction), 0, new(sync.Mutex)}
-
-// Mempool ...
 
 type block struct {
 	NodeFrom string
@@ -166,7 +150,7 @@ func handleBlock(request []byte) {
 
 	fmt.Printf("Recevied a new block! from %s\n", payload.NodeFrom)
 
-	blockChanFromServerToBlockChainManager <- block
+	SToBCMBlock <- block
 
 	if len(blocksInTransit) > 0 {
 		blockHash := blocksInTransit[0]
@@ -205,13 +189,13 @@ func handleInv(request []byte) {
 	}
 
 	if payload.Type == "tx" {
-		txID := payload.Items[0]
+		txID := hex.EncodeToString(payload.Items[0])
 
-		mp.mtx.Lock()
-		if mp.mempool[hex.EncodeToString(txID)] == nil {
-			sendGetData(payload.NodeFrom, "tx", txID)
+		SToMGetTxByHash <- &TxByHash{payload.NodeFrom, txID, nil}
+
+		if txByHash := <-MToSSendTxByHash; txByHash.Tx == nil {
+			sendGetData(txByHash.NodeFrom, "tx", payload.Items[0])
 		}
-		mp.mtx.Unlock()
 	}
 }
 
@@ -228,11 +212,10 @@ func handleGetBlocks(request []byte) {
 
 	fmt.Printf("Received getblocks command from %s\n", payload.NodeFrom)
 
-	blocksHashChanFromServerToBlockChainManager <- true
+	SToBCMGetBlocksHash <- &BlocksHash{payload.NodeFrom, nil}
+	blockByHash := <-BCMToSBlocksHash
 
-	blocksHash := <-blocksHashChanFromBlockChainManagerToServer
-
-	sendInv(payload.NodeFrom, "block", blocksHash)
+	sendInv(blockByHash.NodeFrom, "block", blockByHash.Hashs)
 }
 
 func handleGetData(request []byte) {
@@ -248,24 +231,22 @@ func handleGetData(request []byte) {
 
 	fmt.Printf("Received getdata command from %s\n", payload.NodeFrom)
 
-	bc := NewBlockchain()
-
 	if payload.Type == "block" {
-		blockHashChanFromServerToBlockChainManager <- []byte(payload.ID)
+		SToBCMGetBlockByHash <- &BlockByHash{payload.NodeFrom, payload.ID, nil}
 
-		if block := <-blockHashChanFromBlockChainManagerToServer; block != nil {
-			sendBlock(payload.NodeFrom, block)
+		if blockByHash := <-BCMToSBlockByHash; blockByHash.Block != nil {
+			sendBlock(blockByHash.NodeFrom, blockByHash.Block)
 		}
 	}
 
 	if payload.Type == "tx" {
 		txID := hex.EncodeToString(payload.ID)
 
-		mp.mtx.Lock()
-		tx := mp.mempool[txID]
-		mp.mtx.Unlock()
+		SToMGetTxByHash <- &TxByHash{payload.NodeFrom, txID, nil}
 
-		sendTx(payload.NodeFrom, tx)
+		if txByHash := <-MToSSendTxByHash; txByHash.Tx != nil {
+			sendTx(txByHash.NodeFrom, txByHash.Tx)
+		}
 	}
 }
 
@@ -285,7 +266,7 @@ func handleTx(request []byte) {
 
 	fmt.Printf("Received tx command from %s\n", payload.NodeFrom)
 
-	txChanFromServerToMempool <- tx
+	SToMTx <- tx
 }
 
 func handleVersion(request []byte) {
@@ -301,8 +282,11 @@ func handleVersion(request []byte) {
 
 	fmt.Printf("Received version command from %s\n", payload.NodeFrom)
 
-	myBestHeight := GetHeight()
-	myBlockVersion := GetVersion()
+	SToBCMGetBCM <- &Notification{}
+	nbcm := <-BCMToSSendBCM
+
+	myBestHeight := nbcm.Height
+	myBlockVersion := nbcm.BlockHeader.Version
 
 	foreignerBestHeight := payload.BestHeight
 
@@ -352,7 +336,13 @@ func StartServer(minerAddress string) {
 	}
 	defer ln.Close()
 
-	// myBlockVersion, myBestHeight := GetLocalHeightAndVersion()
+	SToBCMGetBCM <- &Notification{}
+	nbcm := <-BCMToSSendBCM
+
+	myBestHeight := nbcm.Height
+	myBlockVersion := nbcm.BlockHeader.Version
+
+	sendVersion("", myBlockVersion, myBestHeight)
 
 	for {
 		conn, err := ln.Accept()
@@ -361,14 +351,4 @@ func StartServer(minerAddress string) {
 		}
 		go handleConnection(conn)
 	}
-}
-
-// GetHeight ...
-func GetHeight() int64 {
-	return .GetBestHeight()
-}
-
-// GetVersion ...
-func GetVersion() int {
-	return NewBlockchain().GetVersion()
 }

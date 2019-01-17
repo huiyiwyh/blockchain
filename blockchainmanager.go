@@ -13,13 +13,6 @@ import (
 	"github.com/boltdb/bolt"
 )
 
-var blockChanFromBlockChainManagerToServer chan *Block = make(chan *Block, 20)
-var blockChanFromBlockChainManagerToMempool chan *Block = make(chan *Block, 20)
-
-var blocksHashChanFromBlockChainManagerToServer chan [][]byte = make(chan [][]byte, 20)
-
-var blockHashChanFromBlockChainManagerToServer chan *Block = make(chan *Block, 20)
-
 // BlockChainManager ...
 type BlockChainManager struct {
 	BlockHeader    *BlockHeader
@@ -28,6 +21,14 @@ type BlockChainManager struct {
 	Transactions   []*Transaction
 	Height         int64
 	mtx            *sync.Mutex
+}
+
+type BlockChainManagerInfo struct {
+	BlockHeader    *BlockHeader
+	Hash           []byte
+	TransactionNum int
+	Transactions   []*Transaction
+	Height         int64
 }
 
 // NewBlockChainManager returns a new BlockChainManager
@@ -45,12 +46,30 @@ func NewBlockChainManager(block *Block) *BlockChainManager {
 // BlockChainProcessor process blockchain, receive block from server, receive txs from mempool,
 // store blockchains in db, returns blocks to server
 func (bcm *BlockChainManager) BlockChainProcessor() {
-	select {
-	case block := <-blockChanFromServerToBlockChainManager:
-		go bcm.ValidateBlockIsValidAndAdd(block)
-	case txs := <-txChanFromMempoolToBlockChainManager:
-		go bcm.MineBlock(txs)
+	for {
+		select {
+		case block := <-SToBCMBlock:
+			go bcm.ValidateBlockIsValidAndAdd(block)
+		case txs := <-MToBCMTxs:
+			go bcm.MineBlock(txs)
+		case <-SToBCMGetBCM:
+			go bcm.GetBlockChainManagerInfo()
+		case blockByHash := <-SToBCMGetBlockByHash:
+			block, err := bcm.GetBlockByHash(blockByHash.Hash)
+			if err != nil {
+				fmt.Println(err)
+			}
+			BCMToSBlockByHash <- &BlockByHash{blockByHash.NodeFrom, blockByHash.Hash, block}
+		case blocksHash := <-SToBCMGetBlocksHash:
+			BCMToSBlocksHash <- &BlocksHash{blocksHash.NodeFrom, bcm.GetBlocksHash()}
+		}
 	}
+}
+
+// GetBlockChainManagerInfo retuns blockChainManagerinfo
+func (bcm *BlockChainManager) GetBlockChainManagerInfo() {
+	nbcm := GetBlockChainManagerInfo(bcm)
+	BCMToSSendBCM <- nbcm
 }
 
 // ValidateBlockIsValidAndAdd refers BlockChainManager will validate the received block
@@ -85,9 +104,10 @@ func (bcm *BlockChainManager) MineBlock(txs []*Transaction) {
 	cbTx := NewCoinbaseTX(miningAddress, "")
 	txs = append(txs, cbTx)
 
+	u := &UTXOSet{bcm.Hash}
+
 	for _, tx := range txs {
-		// TODO: ignore transaction if it's not valid
-		if bcm.VerifyTransaction(tx) != true {
+		if u.VerifyTransaction(tx) != true {
 			log.Panic("ERROR: Invalid transaction")
 		}
 	}
@@ -99,14 +119,10 @@ func (bcm *BlockChainManager) MineBlock(txs []*Transaction) {
 
 	bcm.AddBlock(newBlock)
 
-	if newBlock == nil {
-		return
-	}
-
 	UTXOSet := UTXOSet{bcm.Hash}
 	UTXOSet.Reindex()
 
-	mp.DeleteTxs(txs)
+	BCMToMTxs <- txs
 }
 
 // GetHeight returns height stored in BlockChainManager
@@ -166,8 +182,8 @@ func (bcm *BlockChainManager) GetBlockByHash(blockHash []byte) (*Block, error) {
 	return block, nil
 }
 
-// GetBlockHashes returns a list of hashes of all the blocks in the chain
-func (bcm *BlockChainManager) GetBlockHashes() [][]byte {
+// GetBlocksHash returns a list of hashes of all the blocks in the chain
+func (bcm *BlockChainManager) GetBlocksHash() [][]byte {
 	var blocks [][]byte
 	bci := bcm.Iterator(bcm.Hash)
 
@@ -212,18 +228,17 @@ func (bcm *BlockChainManager) GetLastBlock() *Block {
 // Iterator returns a BlockchainIterat
 func (bcm *BlockChainManager) Iterator(lastHash []byte) *BlockchainIterator {
 	bci := &BlockchainIterator{lastHash}
-
 	return bci
 }
 
 // FindUTXO finds all unspent transaction outputs and returns transactions with spent outputs removed
-func (bcm *BlockChainManager) FindUTXO() map[string]TXOutputs {
+func (u UTXOSet) FindUTXO() map[string]TXOutputs {
 	UTXO := make(map[string]TXOutputs)
 	spentTXOs := make(map[string][]int)
-	bci := bcm.Iterator(bcm.Hash)
+	ui := u.Iterator(u.Hash)
 
 	for {
-		block := bci.Next()
+		block := ui.Next()
 
 		for _, tx := range block.Transactions {
 			txID := hex.EncodeToString(tx.ID)
@@ -261,7 +276,7 @@ func (bcm *BlockChainManager) FindUTXO() map[string]TXOutputs {
 }
 
 // VerifyTransaction verifies transaction input signatures
-func (bcm *BlockChainManager) VerifyTransaction(tx *Transaction) bool {
+func (u *UTXOSet) VerifyTransaction(tx *Transaction) bool {
 	if tx.IsCoinbase() {
 		return true
 	}
@@ -269,7 +284,7 @@ func (bcm *BlockChainManager) VerifyTransaction(tx *Transaction) bool {
 	prevTXs := make(map[string]Transaction)
 
 	for _, vin := range tx.Vin {
-		prevTX, err := bcm.FindTransaction(vin.Txid)
+		prevTX, err := u.FindTransaction(vin.Txid)
 		if err != nil {
 			log.Panic(err)
 		}
@@ -280,11 +295,11 @@ func (bcm *BlockChainManager) VerifyTransaction(tx *Transaction) bool {
 }
 
 // SignTransaction signs inputs of a Transaction
-func (bcm *BlockChainManager) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey) {
+func (u *UTXOSet) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey) {
 	prevTXs := make(map[string]Transaction)
 
 	for _, vin := range tx.Vin {
-		prevTX, err := bcm.FindTransaction(vin.Txid)
+		prevTX, err := u.FindTransaction(vin.Txid)
 		if err != nil {
 			log.Panic(err)
 		}
@@ -295,11 +310,11 @@ func (bcm *BlockChainManager) SignTransaction(tx *Transaction, privKey ecdsa.Pri
 }
 
 // FindTransaction finds a transaction by its ID
-func (bcm *BlockChainManager) FindTransaction(ID []byte) (Transaction, error) {
-	bci := bcm.Iterator(bcm.Hash)
+func (u *UTXOSet) FindTransaction(ID []byte) (Transaction, error) {
+	ui := u.Iterator(u.Hash)
 
 	for {
-		block := bci.Next()
+		block := ui.Next()
 
 		for _, tx := range block.Transactions {
 			if bytes.Compare(tx.ID, ID) == 0 {
@@ -384,7 +399,6 @@ func (bcm *BlockChainManager) AddBlock(newBlock *Block) {
 				if err != nil {
 					log.Panic(err)
 				}
-				bcm.Hash = newBlock.Hash
 			}
 		}
 
@@ -442,6 +456,11 @@ func (bcm *BlockChainManager) AddBlock(newBlock *Block) {
 				goto UpdateOrphanBlock
 			}
 		}
+
+		hash := b.Get([]byte("l"))
+		blockDataByte := b.Get(hash)
+		block := DeserializeBlock(blockDataByte)
+		bcm.Update(block)
 
 		return nil
 	})
@@ -626,4 +645,30 @@ func (bcm *BlockChainManager) GetForkBlockHeight(b *bolt.Bucket, sideChainIndex 
 	}
 
 	return height - 1
+}
+
+// GetBlockChainManagerInfo ...
+func GetBlockChainManagerInfo(bcm *BlockChainManager) *BlockChainManagerInfo {
+	bcm.mtx.Lock()
+	defer bcm.mtx.Unlock()
+
+	nbcm := &BlockChainManagerInfo{}
+	nbcm.Hash = bcm.Hash
+	nbcm.Height = bcm.Height
+	nbcm.TransactionNum = bcm.TransactionNum
+	nbcm.Transactions = bcm.Transactions
+	nbcm.BlockHeader = bcm.BlockHeader
+
+	return nbcm
+}
+
+func (bcm *BlockChainManager) Update(block *Block) {
+	bcm.mtx.Lock()
+	defer bcm.mtx.Unlock()
+
+	bcm.Hash = block.Hash
+	bcm.Height = block.Height
+	bcm.TransactionNum = block.TransactionNum
+	bcm.Transactions = block.Transactions
+	bcm.BlockHeader = block.BlockHeader
 }
