@@ -7,13 +7,13 @@ import (
 	"github.com/boltdb/bolt"
 )
 
-// Blockchain implements interactions with a DB
-type Blockchain struct {
+// BlockChain implements interactions with a DB
+type BlockChain struct {
 	tip []byte
 }
 
-// CreateBlockchain creates a new blockchain DB
-func CreateBlockchain(address string) *Blockchain {
+// CreateBlockChain creates a new blockchain DB
+func CreateBlockChain(address string) *BlockChain {
 	db, err := bolt.Open(blockchaindbFile, 0600, nil)
 	if err != nil {
 		log.Panic(err)
@@ -58,32 +58,48 @@ func CreateBlockchain(address string) *Blockchain {
 		log.Panic(err)
 	}
 
-	bc := Blockchain{tip}
+	bc := BlockChain{tip}
 
 	return &bc
 }
 
-// NewBlockchain creates a new Blockchain with genesis Block
-func NewBlockchain() *Blockchain {
+// LoadTopBlock ...
+func LoadTopBlock() (*Block, error) {
 	db, err := bolt.Open(blockchaindbFile, 0600, nil)
 	if err != nil {
 		log.Panic(err)
 	}
 	defer db.Close()
 
-	var tip []byte
+	var block *Block
 
-	err = db.View(func(tx *bolt.Tx) error {
+	err = db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
-		tip = b.Get([]byte("l"))
+		if b == nil {
+			fmt.Println("the blockchain is not exist")
+		}
+
+		lastHash := b.Get([]byte("l"))
+		lastBlockData := b.Get(lastHash)
+		lastBlock := DeserializeBlock(lastBlockData)
+
+		block = lastBlock
 
 		return nil
 	})
 	if err != nil {
-		log.Panic(err)
+		panic(err)
 	}
 
-	bc := Blockchain{tip}
+	return block, nil
+}
 
-	return &bc
+// NewBlockChain creates a new Blockchain with genesis Block
+func NewBlockChain() *BlockChain {
+	CToBCMGetBCM <- &Notification{}
+
+	nbcm := <-BCMToCSendBCM
+	bc := &BlockChain{nbcm.Hash}
+
+	return bc
 }

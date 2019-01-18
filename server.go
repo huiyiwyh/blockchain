@@ -336,6 +336,12 @@ func StartServer(minerAddress string) {
 	}
 	defer ln.Close()
 
+	bcm := NewBlockChainManager()
+	go bcm.BlockChainProcessor()
+
+	mp := NewMempoolManager()
+	go mp.MempoolManagerProcessor()
+
 	SToBCMGetBCM <- &Notification{}
 	nbcm := <-BCMToSSendBCM
 

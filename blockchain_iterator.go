@@ -7,12 +7,18 @@ import (
 )
 
 // BlockchainIterator is used to iterate over blockchain blocks
-type BlockchainIterator struct {
+type BlockChainIterator struct {
 	currentHash []byte
 }
 
+// Iterator returns BlockChainIterator from the lastHash
+func (b *BlockChain) Iterator(lastHash []byte) *BlockChainIterator {
+	bc := &BlockChainIterator{lastHash}
+	return bc
+}
+
 // Next returns next block starting from the tip
-func (i *BlockchainIterator) Next() *Block {
+func (i *BlockChainIterator) Next() *Block {
 	var block *Block
 
 	db, err := bolt.Open(blockchaindbFile, 0600, nil)

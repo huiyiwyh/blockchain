@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 )
 
@@ -12,18 +13,20 @@ func (cli *CLI) send(from, to string, amount int) {
 		log.Panic("ERROR: Recipient address is not valid")
 	}
 
-	// bc := NewBlockchain()
-	// UTXOSet := UTXOSet{bc}
+	bc := NewBlockChain()
+	UTXOSet := UTXOSet{bc.tip}
 
-	// wallets, err := NewWallets()
-	// if err != nil {
-	// 	log.Panic(err)
-	// }
-	// wallet := wallets.GetWallet(from)
+	wallets, err := NewWallets()
+	if err != nil {
+		log.Panic(err)
+	}
+	wallet := wallets.GetWallet(from)
 
-	// tx := NewUTXOTransaction(&wallet, to, amount, &UTXOSet)
-	// sendTx("", tx)
-	// fmt.Println("send to ")
+	tx := NewUTXOTransaction(&wallet, to, amount, &UTXOSet)
 
-	// fmt.Printf("Success!\n")
+	// boardcast
+	sendTx("", tx)
+	fmt.Println("send to ")
+
+	fmt.Printf("Success!\n")
 }

@@ -23,6 +23,7 @@ type BlockChainManager struct {
 	mtx            *sync.Mutex
 }
 
+// BlockChainManagerInfo ...
 type BlockChainManagerInfo struct {
 	BlockHeader    *BlockHeader
 	Hash           []byte
@@ -32,7 +33,9 @@ type BlockChainManagerInfo struct {
 }
 
 // NewBlockChainManager returns a new BlockChainManager
-func NewBlockChainManager(block *Block) *BlockChainManager {
+func NewBlockChainManager() *BlockChainManager {
+	block, _ := LoadTopBlock()
+
 	return &BlockChainManager{
 		block.BlockHeader,
 		block.Hash,
@@ -52,8 +55,10 @@ func (bcm *BlockChainManager) BlockChainProcessor() {
 			go bcm.ValidateBlockIsValidAndAdd(block)
 		case txs := <-MToBCMTxs:
 			go bcm.MineBlock(txs)
+		case <-CToBCMGetBCM:
+			go bcm.ReturnCliBlockChainManagerInfo()
 		case <-SToBCMGetBCM:
-			go bcm.GetBlockChainManagerInfo()
+			go bcm.ReturnServerBlockChainManagerInfo()
 		case blockByHash := <-SToBCMGetBlockByHash:
 			block, err := bcm.GetBlockByHash(blockByHash.Hash)
 			if err != nil {
@@ -62,14 +67,21 @@ func (bcm *BlockChainManager) BlockChainProcessor() {
 			BCMToSBlockByHash <- &BlockByHash{blockByHash.NodeFrom, blockByHash.Hash, block}
 		case blocksHash := <-SToBCMGetBlocksHash:
 			BCMToSBlocksHash <- &BlocksHash{blocksHash.NodeFrom, bcm.GetBlocksHash()}
+		default:
 		}
 	}
 }
 
-// GetBlockChainManagerInfo retuns blockChainManagerinfo
-func (bcm *BlockChainManager) GetBlockChainManagerInfo() {
+// ReturnServerBlockChainManagerInfo retuns blockChainManagerinfo
+func (bcm *BlockChainManager) ReturnServerBlockChainManagerInfo() {
 	nbcm := GetBlockChainManagerInfo(bcm)
 	BCMToSSendBCM <- nbcm
+}
+
+// ReturnCliBlockChainManagerInfo retuns blockChainManagerinfo
+func (bcm *BlockChainManager) ReturnCliBlockChainManagerInfo() {
+	nbcm := GetBlockChainManagerInfo(bcm)
+	BCMToCSendBCM <- nbcm
 }
 
 // ValidateBlockIsValidAndAdd refers BlockChainManager will validate the received block
@@ -185,7 +197,9 @@ func (bcm *BlockChainManager) GetBlockByHash(blockHash []byte) (*Block, error) {
 // GetBlocksHash returns a list of hashes of all the blocks in the chain
 func (bcm *BlockChainManager) GetBlocksHash() [][]byte {
 	var blocks [][]byte
-	bci := bcm.Iterator(bcm.Hash)
+
+	bc := &BlockChain{bcm.Hash}
+	bci := bc.Iterator(bc.tip)
 
 	for {
 		block := bci.Next()
@@ -226,10 +240,10 @@ func (bcm *BlockChainManager) GetLastBlock() *Block {
 }
 
 // Iterator returns a BlockchainIterat
-func (bcm *BlockChainManager) Iterator(lastHash []byte) *BlockchainIterator {
-	bci := &BlockchainIterator{lastHash}
-	return bci
-}
+// func (bcm *BlockChainManager) Iterator(lastHash []byte) *BlockchainIterator {
+// 	bci := &BlockchainIterator{lastHash}
+// 	return bci
+// }
 
 // FindUTXO finds all unspent transaction outputs and returns transactions with spent outputs removed
 func (u UTXOSet) FindUTXO() map[string]TXOutputs {
@@ -338,6 +352,8 @@ func (bcm *BlockChainManager) AddBlock(newBlock *Block) {
 	}
 	defer db.Close()
 
+	bc := &BlockChain{bcm.Hash}
+
 	err = db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		o := tx.Bucket([]byte(orphanBlocksBucket))
@@ -367,7 +383,7 @@ func (bcm *BlockChainManager) AddBlock(newBlock *Block) {
 
 		// as sidechain to be added
 		if newBlock.Height < lastBlock.Height {
-			bci := bcm.Iterator(bcm.Hash)
+			bci := bc.Iterator(bc.tip)
 			for {
 				block := bci.Next()
 				if CompareHash(block.Hash, newBlock.BlockHeader.PrevBlockHash) && block.Height+1 == newBlock.Height {
@@ -591,8 +607,9 @@ func (bcm *BlockChainManager) GetCurrentOldestSideChain(b *bolt.Bucket) int {
 // DeleteOldestSideChain delete side chain which is the oldest
 func (bcm *BlockChainManager) DeleteOldestSideChain(b *bolt.Bucket, sideChainIndex int) {
 	forkHeight := bcm.GetForkBlockHeight(b, sideChainIndex)
+	bc := &BlockChain{bcm.Hash}
 
-	bcsi := bcm.Iterator(b.Get([]byte(IntToByte(sideChainIndex))))
+	bcsi := bc.Iterator(b.Get([]byte(IntToByte(sideChainIndex))))
 	for {
 		block := bcsi.Next()
 		if block.Height > forkHeight {
@@ -613,7 +630,8 @@ func (bcm *BlockChainManager) GetForkBlockHeight(b *bolt.Bucket, sideChainIndex 
 	mainChainMap := []string{}
 	sideChainMap := []string{}
 
-	bci := bcm.Iterator(bcm.Hash)
+	bc := &BlockChain{bcm.Hash}
+	bci := bc.Iterator(bc.tip)
 	for {
 		block := bci.Next()
 		mainChainMap = append(mainChainMap, string(block.Hash))
@@ -623,7 +641,7 @@ func (bcm *BlockChainManager) GetForkBlockHeight(b *bolt.Bucket, sideChainIndex 
 		}
 	}
 
-	bcsi := bcm.Iterator(b.Get([]byte(IntToByte(sideChainIndex))))
+	bcsi := bc.Iterator(b.Get([]byte(IntToByte(sideChainIndex))))
 	for {
 		block := bcsi.Next()
 		sideChainMap = append(sideChainMap, string(block.Hash))

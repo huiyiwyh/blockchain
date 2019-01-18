@@ -68,3 +68,7 @@ type TxByHash struct {
 	TxId     string
 	Tx       *Transaction
 }
+
+var CToBCMGetBCM chan *Notification = make(chan *Notification, 20)
+
+var BCMToCSendBCM chan *BlockChainManagerInfo = make(chan *BlockChainManagerInfo, 20)
