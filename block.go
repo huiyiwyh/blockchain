@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/gob"
+	"fmt"
 	"log"
 	"time"
 )
@@ -31,7 +32,7 @@ type BlockHeader struct {
 
 // NewBlock creates and returns Block
 func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int64) *Block {
-	blockHeader := &BlockHeader{BlockVersion, prevBlockHash, []byte{}, time.Now().Unix(), 19, 0}
+	blockHeader := &BlockHeader{BlockVersion, prevBlockHash, []byte{}, time.Now().Unix(), 18, 0}
 	block := &Block{blockHeader, []byte{}, len(transactions), transactions, height}
 	pow := NewProofOfWork(block)
 	nonce, hash := pow.Run()
@@ -142,6 +143,7 @@ func DeserializeBlock(d []byte) *Block {
 // VerifyPoW ...
 func (block *Block) VerifyPoW() bool {
 	pow := NewProofOfWork(block)
+	fmt.Println(pow.block.BlockHeader)
 	if !pow.Validate() {
 		return false
 	}

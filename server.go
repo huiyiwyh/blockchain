@@ -174,12 +174,7 @@ func handleBlock(request []byte) {
 		blocksInTransit = blocksInTransit[1:]
 	}
 
-	knownNodes := GetPeers()
-	for _, node := range knownNodes {
-		if node != localNodeAddress && node != payload.NodeFrom {
-			sendInv(node, "block", [][]byte{block.Hash})
-		}
-	}
+	go MindOtherNodeBlock(payload.NodeFrom, block)
 }
 
 func handleInv(request []byte) {
@@ -290,12 +285,7 @@ func handleTx(request []byte) {
 
 	SToMTx <- tx
 
-	knownNodes := GetPeers()
-	for _, node := range knownNodes {
-		if node != localNodeAddress && node != payload.NodeFrom {
-			sendInv(node, "tx", [][]byte{tx.ID})
-		}
-	}
+	go MindOtherNodeTx(payload.NodeFrom, tx)
 }
 
 func handleVersion(request []byte) {
@@ -377,17 +367,7 @@ func StartServer(minerAddress string) {
 	knowNodes := []string{"191.167.2.1:3000", "191.167.2.17:3000", "191.167.1.111:3000", "191.167.1.146:3000"}
 	SToPPeer <- knowNodes
 
-	SToBCMGetBCM <- &Notification{}
-	nbcm := <-BCMToSSendBCM
-
-	myBestHeight := nbcm.Height
-	myBlockVersion := nbcm.BlockHeader.Version
-
-	for _, node := range knowNodes {
-		if node != localNodeAddress {
-			sendVersion(node, myBlockVersion, myBestHeight)
-		}
-	}
+	//go MindOtherNodeVersion()
 
 	for {
 		conn, err := ln.Accept()
@@ -404,4 +384,39 @@ func GetPeers() []string {
 	npm := <-PToSSendPM
 
 	return MapToSlice(npm.Peers)
+}
+
+func MindOtherNodeVersion() {
+	knowNodes := GetPeers()
+
+	SToBCMGetBCM <- &Notification{}
+	nbcm := <-BCMToSSendBCM
+
+	myBestHeight := nbcm.Height
+	myBlockVersion := nbcm.BlockHeader.Version
+
+	for _, node := range knowNodes {
+		if node != localNodeAddress {
+			sendVersion(node, myBlockVersion, myBestHeight)
+		}
+	}
+}
+
+func MindOtherNodeTx(nodeFrom string, tx *Transaction) {
+	knowNodes := GetPeers()
+
+	for _, node := range knowNodes {
+		if node != localNodeAddress && node != nodeFrom {
+			sendInv(node, "tx", [][]byte{tx.ID})
+		}
+	}
+}
+
+func MindOtherNodeBlock(nodeFrom string, block *Block) {
+	knownNodes := GetPeers()
+	for _, node := range knownNodes {
+		if node != localNodeAddress && node != nodeFrom {
+			sendInv(node, "block", [][]byte{block.Hash})
+		}
+	}
 }

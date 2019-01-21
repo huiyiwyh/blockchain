@@ -46,7 +46,7 @@ func (mp *MempoolManager) MaybeSendTxsToBCM(tx *Transaction) {
 	}
 
 	txNum := mp.txNum
-	if txNum > 1 {
+	if txNum > 0 {
 		var txs []*Transaction
 
 		for _, tx := range mp.mempool {
