@@ -91,10 +91,8 @@ func (mp *MempoolManager) GetTx(txByHash *TxByHash) {
 	mp.mtx.Lock()
 	defer mp.mtx.Unlock()
 
-	if mp.mempool[txByHash.TxId] != nil {
-		txByHash.Tx = mp.mempool[txByHash.TxId]
-		MToSSendTxByHash <- txByHash
-	}
+	txByHash.Tx = mp.mempool[txByHash.TxId]
+	MToSSendTxByHash <- txByHash
 }
 
 // GetTxs ...

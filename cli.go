@@ -46,8 +46,8 @@ func (cli *CLI) Run() {
 	createTxCmd := flag.NewFlagSet("createtx", flag.ExitOnError)
 	startNodeCmd := flag.NewFlagSet("startnode", flag.ExitOnError)
 
+	createBlockchainAddress := createBlockchainCmd.String("address", "", "")
 	getBalanceAddress := getBalanceCmd.String("address", "", "The address to get balance for")
-	createBlockchainAddress := createBlockchainCmd.String("address", "", "The address to send genesis block reward to")
 	deleteWalletAddress := deleteWalletCmd.String("address", "", "delete wallet address")
 	createTxFrom := createTxCmd.String("from", "", "Source wallet address")
 	createTxTo := createTxCmd.String("to", "", "Destination wallet address")
