@@ -21,6 +21,7 @@ func (cli *CLI) createBlockchain(address string) {
 func (cli *CLI) getblockchaininfo() {
 	bc, err := NewBlockchain()
 	if err != nil {
+		fmt.Println(err)
 		os.Exit(1)
 	}
 

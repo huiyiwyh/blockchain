@@ -10,6 +10,7 @@ func (cli *CLI) getBalance(address string) {
 	if !ValidateAddress(address) {
 		log.Panic("ERROR: Address is not valid")
 	}
+
 	bc, err := NewBlockchain()
 	if err != nil {
 		fmt.Println(err)

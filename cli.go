@@ -13,7 +13,7 @@ type CLI struct{}
 
 func (cli *CLI) printUsage() {
 	fmt.Println("Usage:")
-	fmt.Println("  createBlockchain -address ADDRESS - Create a Blockchain and send genesis block reward to address")
+	fmt.Println("  createblockchain -address ADDRESS - Create a Blockchain and send genesis block reward to address")
 	fmt.Println("  createwallet - Generates a new key-pair and saves it into the wallet file")
 	fmt.Println("  getbalance -address ADDRESS - Get balance of address")
 	fmt.Println("  getwalletsinfo - gets all addresses from the wallet file")
@@ -36,7 +36,7 @@ func (cli *CLI) Run() {
 	cli.validateArgs()
 
 	getBalanceCmd := flag.NewFlagSet("getbalance", flag.ExitOnError)
-	createBlockchainCmd := flag.NewFlagSet("createBlockchain", flag.ExitOnError)
+	createBlockchainCmd := flag.NewFlagSet("createblockchain", flag.ExitOnError)
 	createWalletCmd := flag.NewFlagSet("createwallet", flag.ExitOnError)
 	deleteWalletCmd := flag.NewFlagSet("deletewallet", flag.ExitOnError)
 	getWalletInfoCmd := flag.NewFlagSet("getwalletinfo", flag.ExitOnError)
@@ -60,7 +60,7 @@ func (cli *CLI) Run() {
 		if err != nil {
 			log.Panic(err)
 		}
-	case "createBlockchain":
+	case "createblockchain":
 		err := createBlockchainCmd.Parse(os.Args[2:])
 		if err != nil {
 			log.Panic(err)

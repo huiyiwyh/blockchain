@@ -124,20 +124,20 @@ func sendData(nodeTo string, data []byte) {
 	if err != nil {
 		fmt.Printf("%s is not available\n", nodeTo)
 
-		SToPGetPM <- &Notification{}
-		npm := <-PToSSendPM
-		knownNodes := MapToSlice(npm.Peers)
+		// SToPGetPM <- &Notification{}
+		// npm := <-PToSSendPM
+		// knownNodes := MapToSlice(npm.Peers)
 
-		var updatedNodes []string
+		// var updatedNodes []string
 
-		for _, node := range knownNodes {
-			if node != nodeTo {
-				updatedNodes = append(updatedNodes, node)
-			}
-		}
+		// for _, node := range knownNodes {
+		// 	if node != nodeTo {
+		// 		updatedNodes = append(updatedNodes, node)
+		// 	}
+		// }
 
-		knownNodes = updatedNodes
-		SToPPeer <- knownNodes
+		// knownNodes = updatedNodes
+		// SToPPeer <- knownNodes
 
 		return
 	}
@@ -176,7 +176,9 @@ func handleBlock(request []byte) {
 
 	knownNodes := GetPeers()
 	for _, node := range knownNodes {
-		sendInv(node, "block", [][]byte{block.Hash})
+		if node != localNodeAddress && node != payload.NodeFrom {
+			sendInv(node, "block", [][]byte{block.Hash})
+		}
 	}
 }
 
@@ -288,10 +290,12 @@ func handleTx(request []byte) {
 
 	SToMTx <- tx
 
-	knownNodes := GetPeers()
-	for _, node := range knownNodes {
-		sendInv(node, "tx", [][]byte{tx.ID})
-	}
+	// knownNodes := GetPeers()
+	// for _, node := range knownNodes {
+	// 	if node != localNodeAddress && node != payload.NodeFrom {
+	// 		sendInv(node, "tx", [][]byte{tx.ID})
+	// 	}
+	// }
 }
 
 func handleVersion(request []byte) {
@@ -370,18 +374,20 @@ func StartServer(minerAddress string) {
 	pm := NewPeerManager()
 	go pm.Processor()
 
-	knowNodes := []string{"191.167.2.1:3000", "191.167.2.17:3000", "191.167.1.111:3000", "191.167.1.146:3000"}
-	SToPPeer <- knowNodes
+	//knowNodes := []string{"191.167.2.1:3000", "191.167.2.17:3000", "191.167.1.111:3000", "191.167.1.146:3000"}
+	// SToPPeer <- knowNodes
 
-	SToBCMGetBCM <- &Notification{}
-	nbcm := <-BCMToSSendBCM
+	// SToBCMGetBCM <- &Notification{}
+	// nbcm := <-BCMToSSendBCM
 
-	myBestHeight := nbcm.Height
-	myBlockVersion := nbcm.BlockHeader.Version
+	// myBestHeight := nbcm.Height
+	// myBlockVersion := nbcm.BlockHeader.Version
 
-	for _, node := range knowNodes {
-		sendVersion(node, myBlockVersion, myBestHeight)
-	}
+	// for _, node := range knowNodes {
+	// 	if node != localNodeAddress {
+	// 		sendVersion(node, myBlockVersion, myBestHeight)
+	// 	}
+	// }
 
 	for {
 		conn, err := ln.Accept()

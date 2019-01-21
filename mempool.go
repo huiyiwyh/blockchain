@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/hex"
-	"fmt"
 	"sync"
 )
 
@@ -23,29 +22,28 @@ func (mp *MempoolManager) Processor() {
 	for {
 		select {
 		case tx := <-SToMTx:
-			go mp.ValidateTransactionIsValidAndAdd(tx)
+			go mp.MaybeSendTxsToBCM(tx)
 		case txs := <-BCMToMTxs:
 			go mp.DeleteTxs(txs)
 		case <-SToMGetM:
-			go mp.GetMempoolManager()
+			go mp.GetMempoolManagerInfo()
 		case txByHash := <-SToMGetTxByHash:
 			go mp.GetTx(txByHash)
 		}
 	}
 }
 
-// ValidateTransactionIsValidAndAdd ...
-func (mp *MempoolManager) ValidateTransactionIsValidAndAdd(tx *Transaction) {
-	mp.AddTxs(tx)
-	fmt.Println("txs in mempool's number :", mp.GetTxNum())
-
-	mp.MaybeSendTxsToBCM()
-}
-
 // MaybeSendTxsToBCM ...
-func (mp *MempoolManager) MaybeSendTxsToBCM() {
+func (mp *MempoolManager) MaybeSendTxsToBCM(tx *Transaction) {
 	mp.mtx.Lock()
 	defer mp.mtx.Unlock()
+
+	if mp.mempool[hex.EncodeToString(tx.ID)] == nil {
+		mp.mempool[hex.EncodeToString(tx.ID)] = tx
+		mp.txNum++
+		//fmt.Println("a new tx has been send to mempool")
+		//fmt.Println("txs in mempool's number :", mp.txNum)
+	}
 
 	txNum := mp.txNum
 	if txNum > 1 {
@@ -53,27 +51,27 @@ func (mp *MempoolManager) MaybeSendTxsToBCM() {
 
 		for _, tx := range mp.mempool {
 			txs = append(txs, tx)
+			delete(mp.mempool, hex.EncodeToString(tx.ID))
+			mp.txNum--
 		}
 		MToBCMTxs <- txs
 	}
 }
 
-// AddTxs add txs into mempool
-func (mp *MempoolManager) AddTxs(tx *Transaction) {
+// AddTx ...
+func (mp *MempoolManager) AddTx(tx *Transaction) {
 	mp.mtx.Lock()
 	defer mp.mtx.Unlock()
 
 	if mp.mempool[hex.EncodeToString(tx.ID)] == nil {
 		mp.mempool[hex.EncodeToString(tx.ID)] = tx
 		mp.txNum++
-		fmt.Println("a new tx has been send to mempool")
-		return
+		//fmt.Println("a new tx has been send to mempool")
+		//fmt.Println("txs in mempool's number :", mp.txNum)
 	}
-
-	fmt.Println("the new tx has already in mempool")
 }
 
-// DeleteTxs delete txs from mempool
+// DeleteTxs ...
 func (mp *MempoolManager) DeleteTxs(txs []*Transaction) {
 	mp.mtx.Lock()
 	defer mp.mtx.Unlock()
@@ -83,8 +81,8 @@ func (mp *MempoolManager) DeleteTxs(txs []*Transaction) {
 		if mp.mempool[txID] != nil {
 			delete(mp.mempool, txID)
 			mp.txNum--
+			//fmt.Println("a tx was deleted from mempool")
 		}
-		fmt.Println("a tx was deleted from mempool")
 	}
 }
 
@@ -121,8 +119,8 @@ func (mp *MempoolManager) GetTxNum() int {
 	return txNum
 }
 
-// GetMempoolManager ...
-func (mp *MempoolManager) GetMempoolManager() {
+// GetMempoolManagerInfo ...
+func (mp *MempoolManager) GetMempoolManagerInfo() {
 	mp.mtx.Lock()
 	defer mp.mtx.Unlock()
 
