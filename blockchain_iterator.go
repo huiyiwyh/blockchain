@@ -12,7 +12,7 @@ type BlockChainIterator struct {
 }
 
 // Iterator returns BlockChainIterator from the lastHash
-func (b *BlockChain) Iterator(lastHash []byte) *BlockChainIterator {
+func (b *Blockchain) Iterator(lastHash []byte) *BlockChainIterator {
 	bc := &BlockChainIterator{lastHash}
 	return bc
 }

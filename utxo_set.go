@@ -171,7 +171,7 @@ func (u UTXOSet) Reindex() {
 }
 
 // Update updates the UTXO set with transactions from the Block
-// The Block is considered to be the tip of a blockchain
+// The Block is considered to be the tip of a Blockchain
 func (u UTXOSet) Update(block *Block) {
 	db, err := bolt.Open(blockchaindbFile, 0600, nil)
 	if err != nil {
@@ -228,7 +228,7 @@ func (u UTXOSet) Update(block *Block) {
 	}
 }
 
-// UTXOIterator is used to iterate over blockchain blocks
+// UTXOIterator is used to iterate over Blockchain blocks
 type UTXOIterator struct {
 	currentHash []byte
 }

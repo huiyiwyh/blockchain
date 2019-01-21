@@ -13,8 +13,8 @@ import (
 	"github.com/boltdb/bolt"
 )
 
-// BlockChainManager ...
-type BlockChainManager struct {
+// BlockchainManager ...
+type BlockchainManager struct {
 	BlockHeader    *BlockHeader
 	Hash           []byte
 	TransactionNum int
@@ -23,8 +23,8 @@ type BlockChainManager struct {
 	mtx            *sync.Mutex
 }
 
-// BlockChainManagerInfo ...
-type BlockChainManagerInfo struct {
+// BlockchainManagerInfo ...
+type BlockchainManagerInfo struct {
 	BlockHeader    *BlockHeader
 	Hash           []byte
 	TransactionNum int
@@ -32,11 +32,11 @@ type BlockChainManagerInfo struct {
 	Height         int64
 }
 
-// NewBlockChainManager returns a new BlockChainManager
-func NewBlockChainManager() *BlockChainManager {
+// NewBlockchainManager returns a new BlockchainManager
+func NewBlockchainManager() *BlockchainManager {
 	block, _ := LoadTopBlock()
 
-	return &BlockChainManager{
+	return &BlockchainManager{
 		block.BlockHeader,
 		block.Hash,
 		block.TransactionNum,
@@ -46,9 +46,9 @@ func NewBlockChainManager() *BlockChainManager {
 	}
 }
 
-// BlockChainProcessor process blockchain, receive block from server, receive txs from mempool,
-// store blockchains in db, returns blocks to server
-func (bcm *BlockChainManager) BlockChainProcessor() {
+// BlockchainProcessor process Blockchain, receive block from server, receive txs from mempool,
+// store Blockchains in db, returns blocks to server
+func (bcm *BlockchainManager) Processor() {
 	for {
 		select {
 		case block := <-SToBCMBlock:
@@ -56,9 +56,9 @@ func (bcm *BlockChainManager) BlockChainProcessor() {
 		case txs := <-MToBCMTxs:
 			go bcm.MineBlock(txs)
 		case <-CToBCMGetBCM:
-			go bcm.ReturnCliBlockChainManagerInfo()
+			go bcm.ReturnCliBlockchainManagerInfo()
 		case <-SToBCMGetBCM:
-			go bcm.ReturnServerBlockChainManagerInfo()
+			go bcm.ReturnServerBlockchainManagerInfo()
 		case blockByHash := <-SToBCMGetBlockByHash:
 			block, err := bcm.GetBlockByHash(blockByHash.Hash)
 			if err != nil {
@@ -72,20 +72,20 @@ func (bcm *BlockChainManager) BlockChainProcessor() {
 	}
 }
 
-// ReturnServerBlockChainManagerInfo retuns blockChainManagerinfo
-func (bcm *BlockChainManager) ReturnServerBlockChainManagerInfo() {
-	nbcm := GetBlockChainManagerInfo(bcm)
+// ReturnServerBlockchainManagerInfo retuns BlockchainManagerinfo
+func (bcm *BlockchainManager) ReturnServerBlockchainManagerInfo() {
+	nbcm := GetBlockchainManagerInfo(bcm)
 	BCMToSSendBCM <- nbcm
 }
 
-// ReturnCliBlockChainManagerInfo retuns blockChainManagerinfo
-func (bcm *BlockChainManager) ReturnCliBlockChainManagerInfo() {
-	nbcm := GetBlockChainManagerInfo(bcm)
+// ReturnCliBlockchainManagerInfo retuns BlockchainManagerinfo
+func (bcm *BlockchainManager) ReturnCliBlockchainManagerInfo() {
+	nbcm := GetBlockchainManagerInfo(bcm)
 	BCMToCSendBCM <- nbcm
 }
 
-// ValidateBlockIsValidAndAdd refers BlockChainManager will validate the received block
-func (bcm *BlockChainManager) ValidateBlockIsValidAndAdd(block *Block) {
+// ValidateBlockIsValidAndAdd refers BlockchainManager will validate the received block
+func (bcm *BlockchainManager) ValidateBlockIsValidAndAdd(block *Block) {
 
 	// if PoW is not valid, do nothing
 	if !block.VerifyPoW() {
@@ -100,7 +100,7 @@ func (bcm *BlockChainManager) ValidateBlockIsValidAndAdd(block *Block) {
 		return
 	}
 
-	// if block's height is bigger than current height, add the block into blockchain
+	// if block's height is bigger than current height, add the block into Blockchain
 	if block.Height > height {
 		//receiveBlockChan <- true
 	}
@@ -112,7 +112,7 @@ func (bcm *BlockChainManager) ValidateBlockIsValidAndAdd(block *Block) {
 }
 
 // MineBlock ...
-func (bcm *BlockChainManager) MineBlock(txs []*Transaction) {
+func (bcm *BlockchainManager) MineBlock(txs []*Transaction) {
 	cbTx := NewCoinbaseTX(miningAddress, "")
 	txs = append(txs, cbTx)
 
@@ -137,8 +137,8 @@ func (bcm *BlockChainManager) MineBlock(txs []*Transaction) {
 	BCMToMTxs <- txs
 }
 
-// GetHeight returns height stored in BlockChainManager
-func (bcm *BlockChainManager) GetHeight() int64 {
+// GetHeight returns height stored in BlockchainManager
+func (bcm *BlockchainManager) GetHeight() int64 {
 	bcm.mtx.Lock()
 	defer bcm.mtx.Unlock()
 
@@ -146,8 +146,8 @@ func (bcm *BlockChainManager) GetHeight() int64 {
 	return height
 }
 
-// GetVersion returns version stored in BlockChainManager
-func (bcm *BlockChainManager) GetVersion() int {
+// GetVersion returns version stored in BlockchainManager
+func (bcm *BlockchainManager) GetVersion() int {
 	bcm.mtx.Lock()
 	defer bcm.mtx.Unlock()
 
@@ -157,7 +157,7 @@ func (bcm *BlockChainManager) GetVersion() int {
 }
 
 // GetHash returns the hash of the latest block
-func (bcm *BlockChainManager) GetHash() []byte {
+func (bcm *BlockchainManager) GetHash() []byte {
 	bcm.mtx.Lock()
 	defer bcm.mtx.Unlock()
 
@@ -166,7 +166,7 @@ func (bcm *BlockChainManager) GetHash() []byte {
 }
 
 // GetBlockByHash finds a block by its hash and returns it
-func (bcm *BlockChainManager) GetBlockByHash(blockHash []byte) (*Block, error) {
+func (bcm *BlockchainManager) GetBlockByHash(blockHash []byte) (*Block, error) {
 	db, err := bolt.Open(blockchaindbFile, 0600, nil)
 	if err != nil {
 		log.Panic(err)
@@ -195,10 +195,10 @@ func (bcm *BlockChainManager) GetBlockByHash(blockHash []byte) (*Block, error) {
 }
 
 // GetBlocksHash returns a list of hashes of all the blocks in the chain
-func (bcm *BlockChainManager) GetBlocksHash() [][]byte {
+func (bcm *BlockchainManager) GetBlocksHash() [][]byte {
 	var blocks [][]byte
 
-	bc := &BlockChain{bcm.Hash}
+	bc := &Blockchain{bcm.Hash}
 	bci := bc.Iterator(bc.tip)
 
 	for {
@@ -215,7 +215,7 @@ func (bcm *BlockChainManager) GetBlocksHash() [][]byte {
 }
 
 // GetLastBlock returns the latest block
-func (bcm *BlockChainManager) GetLastBlock() *Block {
+func (bcm *BlockchainManager) GetLastBlock() *Block {
 	db, err := bolt.Open(blockchaindbFile, 0600, nil)
 	if err != nil {
 		log.Panic(err)
@@ -240,7 +240,7 @@ func (bcm *BlockChainManager) GetLastBlock() *Block {
 }
 
 // Iterator returns a BlockchainIterat
-// func (bcm *BlockChainManager) Iterator(lastHash []byte) *BlockchainIterator {
+// func (bcm *BlockchainManager) Iterator(lastHash []byte) *BlockchainIterator {
 // 	bci := &BlockchainIterator{lastHash}
 // 	return bci
 // }
@@ -344,15 +344,15 @@ func (u *UTXOSet) FindTransaction(ID []byte) (Transaction, error) {
 	return Transaction{}, errors.New("Transaction is not found")
 }
 
-// AddBlock saves the block into the blockchain
-func (bcm *BlockChainManager) AddBlock(newBlock *Block) {
+// AddBlock saves the block into the Blockchain
+func (bcm *BlockchainManager) AddBlock(newBlock *Block) {
 	db, err := bolt.Open(blockchaindbFile, 0600, nil)
 	if err != nil {
 		log.Panic(err)
 	}
 	defer db.Close()
 
-	bc := &BlockChain{bcm.Hash}
+	bc := &Blockchain{bcm.Hash}
 
 	err = db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
@@ -418,7 +418,7 @@ func (bcm *BlockChainManager) AddBlock(newBlock *Block) {
 			}
 		}
 
-		// after newBlock is added ,check the orphan pool whether the orpahan block can be add into blockchain
+		// after newBlock is added ,check the orphan pool whether the orpahan block can be add into Blockchain
 	UpdateOrphanBlock:
 		c := o.Cursor()
 		for hashByte, blockDataByte := c.First(); hashByte != nil; hashByte, blockDataByte = c.Next() {
@@ -486,7 +486,7 @@ func (bcm *BlockChainManager) AddBlock(newBlock *Block) {
 }
 
 // NewSideChainIndex returns the index of the new side chain
-func (bcm *BlockChainManager) NewSideChainIndex(b *bolt.Bucket) int {
+func (bcm *BlockchainManager) NewSideChainIndex(b *bolt.Bucket) int {
 	for i := 1; i <= isAllowedSideChainNum; i++ {
 		if b.Get([]byte(IntToByte(i))) == nil {
 			return i
@@ -498,7 +498,7 @@ func (bcm *BlockChainManager) NewSideChainIndex(b *bolt.Bucket) int {
 }
 
 // GetCurrentOldestSideChain get current oldest side chain
-func (bcm *BlockChainManager) GetCurrentOldestSideChain(b *bolt.Bucket) int {
+func (bcm *BlockchainManager) GetCurrentOldestSideChain(b *bolt.Bucket) int {
 	lastHash := b.Get([]byte("l"))
 	blockData := b.Get(lastHash)
 	lastBlock := DeserializeBlock(blockData)
@@ -605,9 +605,9 @@ func (bcm *BlockChainManager) GetCurrentOldestSideChain(b *bolt.Bucket) int {
 }
 
 // DeleteOldestSideChain delete side chain which is the oldest
-func (bcm *BlockChainManager) DeleteOldestSideChain(b *bolt.Bucket, sideChainIndex int) {
+func (bcm *BlockchainManager) DeleteOldestSideChain(b *bolt.Bucket, sideChainIndex int) {
 	forkHeight := bcm.GetForkBlockHeight(b, sideChainIndex)
-	bc := &BlockChain{bcm.Hash}
+	bc := &Blockchain{bcm.Hash}
 
 	bcsi := bc.Iterator(b.Get([]byte(IntToByte(sideChainIndex))))
 	for {
@@ -623,14 +623,14 @@ func (bcm *BlockChainManager) DeleteOldestSideChain(b *bolt.Bucket, sideChainInd
 	b.Delete([]byte(IntToByte(sideChainIndex)))
 }
 
-// GetForkBlockHeight get fork height of blockchain
-func (bcm *BlockChainManager) GetForkBlockHeight(b *bolt.Bucket, sideChainIndex int) int64 {
+// GetForkBlockHeight get fork height of Blockchain
+func (bcm *BlockchainManager) GetForkBlockHeight(b *bolt.Bucket, sideChainIndex int) int64 {
 	var height int64 = 0
 
 	mainChainMap := []string{}
 	sideChainMap := []string{}
 
-	bc := &BlockChain{bcm.Hash}
+	bc := &Blockchain{bcm.Hash}
 	bci := bc.Iterator(bc.tip)
 	for {
 		block := bci.Next()
@@ -665,12 +665,12 @@ func (bcm *BlockChainManager) GetForkBlockHeight(b *bolt.Bucket, sideChainIndex 
 	return height - 1
 }
 
-// GetBlockChainManagerInfo ...
-func GetBlockChainManagerInfo(bcm *BlockChainManager) *BlockChainManagerInfo {
+// GetBlockchainManagerInfo ...
+func GetBlockchainManagerInfo(bcm *BlockchainManager) *BlockchainManagerInfo {
 	bcm.mtx.Lock()
 	defer bcm.mtx.Unlock()
 
-	nbcm := &BlockChainManagerInfo{}
+	nbcm := &BlockchainManagerInfo{}
 	nbcm.Hash = bcm.Hash
 	nbcm.Height = bcm.Height
 	nbcm.TransactionNum = bcm.TransactionNum
@@ -680,7 +680,7 @@ func GetBlockChainManagerInfo(bcm *BlockChainManager) *BlockChainManagerInfo {
 	return nbcm
 }
 
-func (bcm *BlockChainManager) Update(block *Block) {
+func (bcm *BlockchainManager) Update(block *Block) {
 	bcm.mtx.Lock()
 	defer bcm.mtx.Unlock()
 

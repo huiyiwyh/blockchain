@@ -18,8 +18,8 @@ func NewMempoolManager() *MempoolManager {
 	return &MempoolManager{make(map[string]*Transaction), 0, new(sync.Mutex)}
 }
 
-// MempoolManagerProcessor manages received txs
-func (mp *MempoolManager) MempoolManagerProcessor() {
+// Processor manages received txs
+func (mp *MempoolManager) Processor() {
 	for {
 		select {
 		case tx := <-SToMTx:

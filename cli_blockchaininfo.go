@@ -2,11 +2,28 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"os"
 	"strconv"
 )
 
-func (cli *CLI) printBlockChain() {
-	bc := NewBlockChain()
+func (cli *CLI) createBlockchain(address string) {
+	if !ValidateAddress(address) {
+		log.Panic("ERROR: Address is not valid")
+	}
+
+	bc := CreateBlockchain(address)
+
+	UTXOSet := UTXOSet{bc.tip}
+	UTXOSet.Reindex()
+}
+
+func (cli *CLI) getblockchaininfo() {
+	bc, err := NewBlockchain()
+	if err != nil {
+		os.Exit(1)
+	}
+
 	bci := bc.Iterator(bc.tip)
 
 	for {

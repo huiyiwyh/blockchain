@@ -114,7 +114,6 @@ func sendTx(nodeTo string, tnx *Transaction) {
 
 func sendVersion(nodeTo string, blockVersion int, bestHeight int64) {
 	payload := gobEncode(version{localNodeAddress, blockVersion, bestHeight})
-
 	request := append(commandToBytes("version"), payload...)
 
 	sendData(nodeTo, request)
@@ -124,6 +123,22 @@ func sendData(nodeTo string, data []byte) {
 	conn, err := net.Dial(protocol, nodeTo)
 	if err != nil {
 		fmt.Printf("%s is not available\n", nodeTo)
+
+		SToPGetPM <- &Notification{}
+		npm := <-PToSSendPM
+		knownNodes := MapToSlice(npm.Peers)
+
+		var updatedNodes []string
+
+		for _, node := range knownNodes {
+			if node != nodeTo {
+				updatedNodes = append(updatedNodes, node)
+			}
+		}
+
+		knownNodes = updatedNodes
+		SToPPeer <- knownNodes
+
 		return
 	}
 	defer conn.Close()
@@ -157,6 +172,11 @@ func handleBlock(request []byte) {
 		sendGetData(payload.NodeFrom, "block", blockHash)
 
 		blocksInTransit = blocksInTransit[1:]
+	}
+
+	knownNodes := GetPeers()
+	for _, node := range knownNodes {
+		sendInv(node, "block", [][]byte{block.Hash})
 	}
 }
 
@@ -267,6 +287,11 @@ func handleTx(request []byte) {
 	fmt.Printf("Received tx command from %s\n", payload.NodeFrom)
 
 	SToMTx <- tx
+
+	knownNodes := GetPeers()
+	for _, node := range knownNodes {
+		sendInv(node, "tx", [][]byte{tx.ID})
+	}
 }
 
 func handleVersion(request []byte) {
@@ -336,11 +361,17 @@ func StartServer(minerAddress string) {
 	}
 	defer ln.Close()
 
-	bcm := NewBlockChainManager()
-	go bcm.BlockChainProcessor()
+	bcm := NewBlockchainManager()
+	go bcm.Processor()
 
 	mp := NewMempoolManager()
-	go mp.MempoolManagerProcessor()
+	go mp.Processor()
+
+	pm := NewPeerManager()
+	go pm.Processor()
+
+	knowNodes := []string{"191.167.2.1:3000", "191.167.2.17:3000", "191.167.1.111:3000", "191.167.1.146:3000"}
+	SToPPeer <- knowNodes
 
 	SToBCMGetBCM <- &Notification{}
 	nbcm := <-BCMToSSendBCM
@@ -348,7 +379,9 @@ func StartServer(minerAddress string) {
 	myBestHeight := nbcm.Height
 	myBlockVersion := nbcm.BlockHeader.Version
 
-	sendVersion("", myBlockVersion, myBestHeight)
+	for _, node := range knowNodes {
+		sendVersion(node, myBlockVersion, myBestHeight)
+	}
 
 	for {
 		conn, err := ln.Accept()
@@ -357,4 +390,12 @@ func StartServer(minerAddress string) {
 		}
 		go handleConnection(conn)
 	}
+}
+
+// GetPeers ...
+func GetPeers() []string {
+	SToPGetPM <- &Notification{}
+	npm := <-PToSSendPM
+
+	return MapToSlice(npm.Peers)
 }

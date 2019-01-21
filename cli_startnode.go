@@ -15,5 +15,6 @@ func (cli *CLI) startNode(minerAddress string) {
 		}
 	}
 
+	go cli.Processor()
 	StartServer(minerAddress)
 }

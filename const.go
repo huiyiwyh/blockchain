@@ -16,12 +16,12 @@ const blockversion = byte(0x00)
 const addressChecksumLen = 4
 
 // MempoolMaxTxs defers maxTxs num in mempool
-const MempoolMaxTxs = 2
+const mempoolMaxTxs = 2
 
-// blockchaindbFile defers dbname
+// BlockchaindbFile defers dbname
 const blockchaindbFile = "blockchain.db"
 
-// blocksBucket defines the bucket of block in blockchain
+// blocksBucket defines the bucket of block in Blockchain
 const blocksBucket = "blocks"
 
 // orphanBlocksBucket defines the bucket of orphan block

@@ -24,7 +24,7 @@ func main() {
 	}
 
 	localNodeAddress = fmt.Sprintf(localNodeAddress + ":3000")
-	CreateOrLoadBlockChaindb()
+	CreateOrLoadBlockchaindb()
 
 	cli := CLI{}
 	cli.Run()

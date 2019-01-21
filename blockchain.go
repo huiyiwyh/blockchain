@@ -2,18 +2,20 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
+	"net/http"
 
 	"github.com/boltdb/bolt"
 )
 
-// BlockChain implements interactions with a DB
-type BlockChain struct {
+// Blockchain implements interactions with a DB
+type Blockchain struct {
 	tip []byte
 }
 
-// CreateBlockChain creates a new blockchain DB
-func CreateBlockChain(address string) *BlockChain {
+// CreateBlockchain creates a new Blockchain DB
+func CreateBlockchain(address string) *Blockchain {
 	db, err := bolt.Open(blockchaindbFile, 0600, nil)
 	if err != nil {
 		log.Panic(err)
@@ -25,7 +27,7 @@ func CreateBlockChain(address string) *BlockChain {
 	err = db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		if b != nil {
-			return fmt.Errorf("The blockchain is exists")
+			return fmt.Errorf("The Blockchain is exists")
 		}
 
 		cbtx := NewCoinbaseTX(address, genesisCoinbaseData)
@@ -58,7 +60,7 @@ func CreateBlockChain(address string) *BlockChain {
 		log.Panic(err)
 	}
 
-	bc := BlockChain{tip}
+	bc := Blockchain{tip}
 
 	return &bc
 }
@@ -76,7 +78,7 @@ func LoadTopBlock() (*Block, error) {
 	err = db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		if b == nil {
-			fmt.Println("the blockchain is not exist")
+			fmt.Println("the Blockchain is not exist")
 		}
 
 		lastHash := b.Get([]byte("l"))
@@ -94,12 +96,16 @@ func LoadTopBlock() (*Block, error) {
 	return block, nil
 }
 
-// NewBlockChain creates a new Blockchain with genesis Block
-func NewBlockChain() *BlockChain {
-	CToBCMGetBCM <- &Notification{}
+// NewBlockchain creates a new Blockchain with genesis Block
+func NewBlockchain() (*Blockchain, error) {
+	resp, err := http.Get("http://127.0.0.1:8080/getbcm")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
 
-	nbcm := <-BCMToCSendBCM
-	bc := &BlockChain{nbcm.Hash}
+	body, err := ioutil.ReadAll(resp.Body)
 
-	return bc
+	bc := &Blockchain{body}
+	return bc, nil
 }
