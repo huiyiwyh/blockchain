@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/hex"
+	"log"
 	"sync"
 	"time"
 )
@@ -53,6 +54,17 @@ func (mp *MempoolManager) MaybeSendTxsToBCM() {
 				txs = append(txs, tx)
 				delete(mp.mempool, hex.EncodeToString(tx.ID))
 				mp.txNum--
+			}
+
+			MToBCMGetBCM <- &Notification{}
+			nbcm := <-BCMToMSendBCM
+
+			u := &UTXOSet{nbcm.Hash}
+
+			for _, tx := range txs {
+				if u.VerifyTransaction(tx) != true {
+					log.Println("ERROR: Invalid transaction")
+				}
 			}
 			MToBCMTxs <- txs
 		}

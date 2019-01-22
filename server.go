@@ -11,11 +11,6 @@ import (
 	"net"
 )
 
-var localNodeAddress string
-var miningAddress string
-
-var blocksInTransit = [][]byte{}
-
 type block struct {
 	NodeFrom string
 	Block    []byte
@@ -47,6 +42,15 @@ type version struct {
 	Version    int
 	BestHeight int64
 }
+
+// localNodeAddress defines local ip + port
+var localNodeAddress string
+
+// miningAddress defines a wallet address to mine
+var miningAddress string
+
+// blocksInTransit stores blocks hash
+var blocksInTransit = [][]byte{}
 
 func commandToBytes(command string) []byte {
 	var bytes [commandLength]byte

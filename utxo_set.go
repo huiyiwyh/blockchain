@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"crypto/ecdsa"
 	"encoding/hex"
+	"errors"
 	"log"
 
 	"github.com/boltdb/bolt"
@@ -12,6 +15,105 @@ const utxoBucket = "chainstate"
 // UTXOSet represents UTXO set
 type UTXOSet struct {
 	Hash []byte
+}
+
+// FindUTXO finds all unspent transaction outputs and returns transactions with spent outputs removed
+func (u UTXOSet) FindUTXO() map[string]TXOutputs {
+	UTXO := make(map[string]TXOutputs)
+	spentTXOs := make(map[string][]int)
+	ui := u.Iterator(u.Hash)
+
+	for {
+		block := ui.Next()
+
+		for _, tx := range block.Transactions {
+			txID := hex.EncodeToString(tx.ID)
+
+		Outputs:
+			for outIdx, out := range tx.Vout {
+				// Was the output spent?
+				if spentTXOs[txID] != nil {
+					for _, spentOutIdx := range spentTXOs[txID] {
+						if spentOutIdx == outIdx {
+							continue Outputs
+						}
+					}
+				}
+
+				outs := UTXO[txID]
+				outs.Outputs = append(outs.Outputs, out)
+				UTXO[txID] = outs
+			}
+
+			if tx.IsCoinbase() == false {
+				for _, in := range tx.Vin {
+					inTxID := hex.EncodeToString(in.Txid)
+					spentTXOs[inTxID] = append(spentTXOs[inTxID], in.Vout)
+				}
+			}
+		}
+
+		if len(block.BlockHeader.PrevBlockHash) == 0 {
+			break
+		}
+	}
+
+	return UTXO
+}
+
+// VerifyTransaction verifies transaction input signatures
+func (u *UTXOSet) VerifyTransaction(tx *Transaction) bool {
+	if tx.IsCoinbase() {
+		return true
+	}
+
+	prevTXs := make(map[string]Transaction)
+
+	for _, vin := range tx.Vin {
+		prevTX, err := u.FindTransaction(vin.Txid)
+		if err != nil {
+			log.Println(err)
+		}
+		prevTXs[hex.EncodeToString(prevTX.ID)] = prevTX
+	}
+
+	return tx.Verify(prevTXs)
+}
+
+// SignTransaction signs inputs of a Transaction
+func (u *UTXOSet) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey) {
+	prevTXs := make(map[string]Transaction)
+
+	for _, vin := range tx.Vin {
+		prevTX, err := u.FindTransaction(vin.Txid)
+		if err != nil {
+			log.Panic(err)
+		}
+		prevTXs[hex.EncodeToString(prevTX.ID)] = prevTX
+	}
+
+	tx.Sign(privKey, prevTXs)
+}
+
+// FindTransaction finds a transaction by its ID
+func (u *UTXOSet) FindTransaction(ID []byte) (Transaction, error) {
+	ui := u.Iterator(u.Hash)
+
+	for {
+		block := ui.Next()
+
+		for _, tx := range block.Transactions {
+			if bytes.Compare(tx.ID, ID) == 0 {
+				return *tx, nil
+			}
+		}
+
+		if block.BlockHeader.PrevBlockHash == nil {
+			break
+		}
+	}
+
+	return Transaction{}, errors.New("Transaction is not found")
 }
 
 // FindSpendableOutputs finds and returns unspent outputs to reference in inputs

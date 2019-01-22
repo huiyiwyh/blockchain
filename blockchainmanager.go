@@ -2,11 +2,10 @@ package main
 
 import (
 	"bytes"
-	"crypto/ecdsa"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"sync"
 	"time"
 
@@ -15,12 +14,13 @@ import (
 
 // BlockchainManager ...
 type BlockchainManager struct {
-	BlockHeader    *BlockHeader
-	Hash           []byte
-	TransactionNum int
-	Transactions   []*Transaction
-	Height         int64
-	mtx            *sync.Mutex
+	BlockHeader       *BlockHeader
+	Hash              []byte
+	TransactionNum    int
+	Transactions      []*Transaction
+	Height            int64
+	SidechanTimestamp map[int64]string
+	mtx               *sync.Mutex
 }
 
 // BlockchainManagerInfo ...
@@ -42,6 +42,7 @@ func NewBlockchainManager() *BlockchainManager {
 		block.TransactionNum,
 		block.Transactions,
 		block.Height,
+		make(map[int64]string),
 		new(sync.Mutex),
 	}
 }
@@ -52,40 +53,48 @@ func (bcm *BlockchainManager) Processor() {
 	for {
 		select {
 		case block := <-SToBCMBlock:
-			go bcm.ValidateBlockIsValidAndAdd(block)
+			go bcm.validateBlockIsValidAndAdd(block)
 		case txs := <-MToBCMTxs:
-			go bcm.MineBlock(txs)
+			go bcm.mineBlock(txs)
 		case <-CToBCMGetBCM:
-			go bcm.ReturnCliBlockchainManagerInfo()
+			go bcm.returnCliBlockchainManagerInfo()
 		case <-SToBCMGetBCM:
-			go bcm.ReturnServerBlockchainManagerInfo()
+			go bcm.returnServerBlockchainManagerInfo()
+		case <-MToBCMGetBCM:
+			go bcm.returnMempoolBlockchainManagerInfo()
 		case blockByHash := <-SToBCMGetBlockByHash:
-			block, err := bcm.GetBlockByHash(blockByHash.Hash)
+			block, err := bcm.getBlockByHash(blockByHash.Hash)
 			if err != nil {
 				fmt.Println(err)
 			}
 			BCMToSBlockByHash <- &BlockByHash{blockByHash.NodeFrom, blockByHash.Hash, block}
 		case blocksHash := <-SToBCMGetBlocksHash:
-			BCMToSBlocksHash <- &BlocksHash{blocksHash.NodeFrom, bcm.GetBlocksHash()}
+			BCMToSBlocksHash <- &BlocksHash{blocksHash.NodeFrom, bcm.getBlocksHash()}
 		default:
 		}
 	}
 }
 
 // ReturnServerBlockchainManagerInfo retuns BlockchainManagerinfo
-func (bcm *BlockchainManager) ReturnServerBlockchainManagerInfo() {
-	nbcm := GetBlockchainManagerInfo(bcm)
+func (bcm *BlockchainManager) returnServerBlockchainManagerInfo() {
+	nbcm := newBlockchainManagerInfo(bcm)
 	BCMToSSendBCM <- nbcm
 }
 
 // ReturnCliBlockchainManagerInfo retuns BlockchainManagerinfo
-func (bcm *BlockchainManager) ReturnCliBlockchainManagerInfo() {
-	nbcm := GetBlockchainManagerInfo(bcm)
+func (bcm *BlockchainManager) returnCliBlockchainManagerInfo() {
+	nbcm := newBlockchainManagerInfo(bcm)
 	BCMToCSendBCM <- nbcm
 }
 
+// ReturnMempoolBlockchainManagerInfo retuns BlockchainManagerinfo
+func (bcm *BlockchainManager) returnMempoolBlockchainManagerInfo() {
+	nbcm := newBlockchainManagerInfo(bcm)
+	BCMToMSendBCM <- nbcm
+}
+
 // ValidateBlockIsValidAndAdd refers BlockchainManager will validate the received block
-func (bcm *BlockchainManager) ValidateBlockIsValidAndAdd(block *Block) {
+func (bcm *BlockchainManager) validateBlockIsValidAndAdd(block *Block) {
 
 	// if PoW is not valid, do nothing
 	if !block.VerifyPoW() {
@@ -93,7 +102,7 @@ func (bcm *BlockchainManager) ValidateBlockIsValidAndAdd(block *Block) {
 		return
 	}
 
-	height := bcm.GetHeight()
+	height := bcm.getHeight()
 
 	// if block is smaller than current height and last 6 blocks, we think the block is usefulless
 	if block.Height+termValidityOfBlock <= height {
@@ -105,31 +114,23 @@ func (bcm *BlockchainManager) ValidateBlockIsValidAndAdd(block *Block) {
 		//receiveBlockChan <- true
 	}
 
-	bcm.AddBlock(block)
+	bcm.addBlock(block)
 
 	UTXOSet := UTXOSet{bcm.Hash}
 	UTXOSet.Reindex()
 }
 
 // MineBlock ...
-func (bcm *BlockchainManager) MineBlock(txs []*Transaction) {
+func (bcm *BlockchainManager) mineBlock(txs []*Transaction) {
 	cbTx := NewCoinbaseTX(miningAddress, "")
 	txs = append(txs, cbTx)
 
-	u := &UTXOSet{bcm.Hash}
-
-	for _, tx := range txs {
-		if u.VerifyTransaction(tx) != true {
-			log.Panic("ERROR: Invalid transaction")
-		}
-	}
-
-	lastBlock := bcm.GetLastBlock()
+	lastBlock := bcm.getLastBlock()
 	lastHash, lastHeight := lastBlock.Hash, lastBlock.Height
 
 	newBlock := NewBlock(txs, lastHash, lastHeight+1)
 
-	bcm.AddBlock(newBlock)
+	bcm.addBlock(newBlock)
 
 	UTXOSet := UTXOSet{bcm.Hash}
 	UTXOSet.Reindex()
@@ -138,7 +139,7 @@ func (bcm *BlockchainManager) MineBlock(txs []*Transaction) {
 }
 
 // GetHeight returns height stored in BlockchainManager
-func (bcm *BlockchainManager) GetHeight() int64 {
+func (bcm *BlockchainManager) getHeight() int64 {
 	bcm.mtx.Lock()
 	defer bcm.mtx.Unlock()
 
@@ -147,7 +148,7 @@ func (bcm *BlockchainManager) GetHeight() int64 {
 }
 
 // GetVersion returns version stored in BlockchainManager
-func (bcm *BlockchainManager) GetVersion() int {
+func (bcm *BlockchainManager) getVersion() int {
 	bcm.mtx.Lock()
 	defer bcm.mtx.Unlock()
 
@@ -157,7 +158,7 @@ func (bcm *BlockchainManager) GetVersion() int {
 }
 
 // GetHash returns the hash of the latest block
-func (bcm *BlockchainManager) GetHash() []byte {
+func (bcm *BlockchainManager) getHash() []byte {
 	bcm.mtx.Lock()
 	defer bcm.mtx.Unlock()
 
@@ -166,7 +167,7 @@ func (bcm *BlockchainManager) GetHash() []byte {
 }
 
 // GetBlockByHash finds a block by its hash and returns it
-func (bcm *BlockchainManager) GetBlockByHash(blockHash []byte) (*Block, error) {
+func (bcm *BlockchainManager) getBlockByHash(blockHash []byte) (*Block, error) {
 	db, err := bolt.Open(blockchaindbFile, 0600, nil)
 	if err != nil {
 		log.Panic(err)
@@ -195,7 +196,7 @@ func (bcm *BlockchainManager) GetBlockByHash(blockHash []byte) (*Block, error) {
 }
 
 // GetBlocksHash returns a list of hashes of all the blocks in the chain
-func (bcm *BlockchainManager) GetBlocksHash() [][]byte {
+func (bcm *BlockchainManager) getBlocksHash() [][]byte {
 	var blocks [][]byte
 
 	bc := &Blockchain{bcm.Hash}
@@ -215,7 +216,7 @@ func (bcm *BlockchainManager) GetBlocksHash() [][]byte {
 }
 
 // GetLastBlock returns the latest block
-func (bcm *BlockchainManager) GetLastBlock() *Block {
+func (bcm *BlockchainManager) getLastBlock() *Block {
 	db, err := bolt.Open(blockchaindbFile, 0600, nil)
 	if err != nil {
 		log.Panic(err)
@@ -239,122 +240,18 @@ func (bcm *BlockchainManager) GetLastBlock() *Block {
 	return lastBlock
 }
 
-// Iterator returns a BlockchainIterat
-// func (bcm *BlockchainManager) Iterator(lastHash []byte) *BlockchainIterator {
-// 	bci := &BlockchainIterator{lastHash}
-// 	return bci
-// }
-
-// FindUTXO finds all unspent transaction outputs and returns transactions with spent outputs removed
-func (u UTXOSet) FindUTXO() map[string]TXOutputs {
-	UTXO := make(map[string]TXOutputs)
-	spentTXOs := make(map[string][]int)
-	ui := u.Iterator(u.Hash)
-
-	for {
-		block := ui.Next()
-
-		for _, tx := range block.Transactions {
-			txID := hex.EncodeToString(tx.ID)
-
-		Outputs:
-			for outIdx, out := range tx.Vout {
-				// Was the output spent?
-				if spentTXOs[txID] != nil {
-					for _, spentOutIdx := range spentTXOs[txID] {
-						if spentOutIdx == outIdx {
-							continue Outputs
-						}
-					}
-				}
-
-				outs := UTXO[txID]
-				outs.Outputs = append(outs.Outputs, out)
-				UTXO[txID] = outs
-			}
-
-			if tx.IsCoinbase() == false {
-				for _, in := range tx.Vin {
-					inTxID := hex.EncodeToString(in.Txid)
-					spentTXOs[inTxID] = append(spentTXOs[inTxID], in.Vout)
-				}
-			}
-		}
-
-		if len(block.BlockHeader.PrevBlockHash) == 0 {
-			break
-		}
-	}
-
-	return UTXO
-}
-
-// VerifyTransaction verifies transaction input signatures
-func (u *UTXOSet) VerifyTransaction(tx *Transaction) bool {
-	if tx.IsCoinbase() {
-		return true
-	}
-
-	prevTXs := make(map[string]Transaction)
-
-	for _, vin := range tx.Vin {
-		prevTX, err := u.FindTransaction(vin.Txid)
-		if err != nil {
-			log.Panic(err)
-		}
-		prevTXs[hex.EncodeToString(prevTX.ID)] = prevTX
-	}
-
-	return tx.Verify(prevTXs)
-}
-
-// SignTransaction signs inputs of a Transaction
-func (u *UTXOSet) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey) {
-	prevTXs := make(map[string]Transaction)
-
-	for _, vin := range tx.Vin {
-		prevTX, err := u.FindTransaction(vin.Txid)
-		if err != nil {
-			log.Panic(err)
-		}
-		prevTXs[hex.EncodeToString(prevTX.ID)] = prevTX
-	}
-
-	tx.Sign(privKey, prevTXs)
-}
-
-// FindTransaction finds a transaction by its ID
-func (u *UTXOSet) FindTransaction(ID []byte) (Transaction, error) {
-	ui := u.Iterator(u.Hash)
-
-	for {
-		block := ui.Next()
-
-		for _, tx := range block.Transactions {
-			if bytes.Compare(tx.ID, ID) == 0 {
-				return *tx, nil
-			}
-		}
-
-		if block.BlockHeader.PrevBlockHash == nil {
-			break
-		}
-	}
-
-	return Transaction{}, errors.New("Transaction is not found")
-}
-
 // AddBlock saves the block into the Blockchain
-func (bcm *BlockchainManager) AddBlock(newBlock *Block) {
+func (bcm *BlockchainManager) addBlock(newBlock *Block) {
 	db, err := bolt.Open(blockchaindbFile, 0600, nil)
 	if err != nil {
 		log.Panic(err)
 	}
 	defer db.Close()
 
-	bc := &Blockchain{bcm.Hash}
+	newBlockData := newBlock.Serialize()
 
 	err = db.Update(func(tx *bolt.Tx) error {
+		falg := false
 		b := tx.Bucket([]byte(blocksBucket))
 		o := tx.Bucket([]byte(orphanBlocksBucket))
 
@@ -362,112 +259,109 @@ func (bcm *BlockchainManager) AddBlock(newBlock *Block) {
 		blockInOrphanBlocksHash := o.Get(newBlock.Hash)
 
 		if blockInBlocksHash != nil || blockInOrphanBlocksHash != nil {
+			fmt.Printf("the block %x is in the main chain or orphan pool\n", newBlock.Hash)
 			return nil
 		}
-
-		newBlockData := newBlock.Serialize()
 
 		lastHash := b.Get([]byte("l"))
-		lastBlockData := b.Get(lastHash)
-		lastBlock := DeserializeBlock(lastBlockData)
 
 		// as orphanblock to be added
-		if newBlock.Height > lastBlock.Height+1 {
-			err := o.Put(newBlock.Hash, newBlockData)
-			if err != nil {
-				log.Panic(err)
-			}
-
-			return nil
-		}
-
-		// as sidechain to be added
-		if newBlock.Height < lastBlock.Height {
-			bci := bc.Iterator(bc.tip)
-			for {
-				block := bci.Next()
-				if CompareHash(block.Hash, newBlock.BlockHeader.PrevBlockHash) && block.Height+1 == newBlock.Height {
-					err := b.Put(newBlock.Hash, newBlockData)
-					if err != nil {
-						log.Panic(err)
-					}
-
-					newSideChainIndex := bcm.NewSideChainIndex(b)
-
-					err = b.Put([]byte(IntToByte(newSideChainIndex)), newBlock.Hash)
-					if err != nil {
-						log.Panic(err)
-					}
-
-					break
-				}
-			}
-		}
-
-		// as mainchain to be added
-		if newBlock.Height == lastBlock.Height+1 {
-			if CompareHash(newBlock.BlockHeader.PrevBlockHash, lastBlock.Hash) {
+		c := b.Cursor()
+		for hashByte, _ := c.First(); hashByte != nil; hashByte, _ = c.Next() {
+			if bytes.Compare(newBlock.BlockHeader.PrevBlockHash, hashByte) == 0 {
 				err := b.Put(newBlock.Hash, newBlockData)
 				if err != nil {
 					log.Panic(err)
 				}
-				err = b.Put([]byte("l"), newBlock.Hash)
+
+				if bytes.Compare(hashByte, lastHash) == 0 {
+					err = b.Put([]byte("l"), newBlock.Hash)
+					if err != nil {
+						log.Panic(err)
+					}
+					fmt.Printf("block %x as mainchain to be added\n", newBlock.Hash)
+					falg = true
+					break
+				}
+
+				err = b.Put(newBlock.Hash, newBlockData)
 				if err != nil {
 					log.Panic(err)
 				}
+
+				newTimestamp := bcm.getNewSidechainTimestamp(hashByte)
+
+				err = b.Put([]byte(newTimestamp), newBlock.Hash)
+				if err != nil {
+					log.Panic(err)
+				}
+				fmt.Printf("block %x as sidechain to be added\n", newBlock.Hash)
+				falg = true
+				break
 			}
 		}
 
+		if !falg {
+			err := o.Put(newBlock.Hash, newBlockData)
+			if err != nil {
+				log.Panic(err)
+			}
+			fmt.Printf("block %x as orphanblock to be added\n", newBlock.Hash)
+
+			return nil
+		}
+
+		fmt.Println("UpdateOrphanBlock")
 		// after newBlock is added ,check the orphan pool whether the orpahan block can be add into Blockchain
 	UpdateOrphanBlock:
-		c := o.Cursor()
-		for hashByte, blockDataByte := c.First(); hashByte != nil; hashByte, blockDataByte = c.Next() {
+		oc := o.Cursor()
+		for hashByte, blockDataByte := oc.First(); hashByte != nil; hashByte, blockDataByte = oc.Next() {
 			block := DeserializeBlock(blockDataByte)
-			if CompareHash(block.BlockHeader.PrevBlockHash, newBlock.Hash) {
+			if bytes.Compare(block.BlockHeader.PrevBlockHash, newBlock.Hash) == 0 {
 				err := b.Put(hashByte, blockDataByte)
 				if err != nil {
 					log.Panic(err)
 				}
-
 				o.Delete(hashByte)
 
-				if CompareHash(b.Get([]byte("l")), newBlock.Hash) {
+				if bytes.Compare(b.Get([]byte("l")), newBlock.Hash) == 0 {
 					err = b.Put([]byte("l"), block.Hash)
 					if err != nil {
 						log.Panic(err)
 					}
+					fmt.Printf("block %x as mainchain to be added\n", block.Hash)
 				} else {
-					for i := 1; i < isAllowedSideChainNum; i++ {
-						if CompareHash(b.Get([]byte(IntToByte(i))), newBlock.Hash) {
-							err = b.Put([]byte(IntToByte(i)), block.Hash)
-							if err != nil {
-								log.Panic(err)
-							}
-
-							// compare height of the sidechain and mainchain
-							// if sidechain's height higher than the height of mainchain, change the tag of the hash
-							lastHash = b.Get([]byte("l"))
-							lastBlockData := b.Get(lastHash)
-							lastBlock := DeserializeBlock(lastBlockData)
-
-							sideLastHash := b.Get([]byte(IntToByte(i)))
-							sideBlockData := b.Get([]byte(sideLastHash))
-							sideLastBlock := DeserializeBlock(sideBlockData)
-
-							if lastBlock.Height < sideLastBlock.Height {
-								err = b.Put([]byte("l"), sideLastBlock.Hash)
-								if err != nil {
-									log.Panic(err)
-								}
-								err = b.Put([]byte(IntToByte(i)), lastBlock.Hash)
-								if err != nil {
-									log.Panic(err)
-								}
-							}
-							break
-						}
+					timestamp := bcm.getNewSidechainTimestamp(newBlock.Hash)
+					err = b.Put([]byte(timestamp), block.Hash)
+					if err != nil {
+						log.Panic(err)
 					}
+					fmt.Printf("block %x as sidechain to be added\n", block.Hash)
+
+					// compare height of the sidechain and mainchain
+					// if sidechain's height higher than the height of mainchain, change the tag of the hash
+					lastHash = b.Get([]byte("l"))
+					lastBlockData := b.Get(lastHash)
+					lastBlock := DeserializeBlock(lastBlockData)
+
+					sideLastHash := b.Get([]byte(timestamp))
+					sideBlockData := b.Get([]byte(sideLastHash))
+					sideLastBlock := DeserializeBlock(sideBlockData)
+
+					if lastBlock.Height < sideLastBlock.Height {
+						err = b.Put([]byte("l"), sideLastBlock.Hash)
+						if err != nil {
+							log.Panic(err)
+						}
+						err = b.Put([]byte(timestamp), lastBlock.Hash)
+						if err != nil {
+							log.Panic(err)
+						}
+						fmt.Println("sidechain change to mainchain")
+					}
+					break
 				}
+
 				newBlock = block
 				goto UpdateOrphanBlock
 			}
@@ -476,29 +370,19 @@ func (bcm *BlockchainManager) AddBlock(newBlock *Block) {
 		hash := b.Get([]byte("l"))
 		blockDataByte := b.Get(hash)
 		block := DeserializeBlock(blockDataByte)
-		bcm.Update(block)
+		bcm.updateBlockchainManager(block)
 
 		return nil
 	})
 	if err != nil {
 		log.Panic(err)
 	}
-}
 
-// NewSideChainIndex returns the index of the new side chain
-func (bcm *BlockchainManager) NewSideChainIndex(b *bolt.Bucket) int {
-	for i := 1; i <= isAllowedSideChainNum; i++ {
-		if b.Get([]byte(IntToByte(i))) == nil {
-			return i
-		}
-	}
-
-	newIndex := bcm.GetCurrentOldestSideChain(b)
-	return newIndex
+	fmt.Println("end")
 }
 
 // GetCurrentOldestSideChain get current oldest side chain
-func (bcm *BlockchainManager) GetCurrentOldestSideChain(b *bolt.Bucket) int {
+func (bcm *BlockchainManager) getCurrentOldestSideChain(b *bolt.Bucket) int {
 	lastHash := b.Get([]byte("l"))
 	blockData := b.Get(lastHash)
 	lastBlock := DeserializeBlock(blockData)
@@ -537,7 +421,7 @@ func (bcm *BlockchainManager) GetCurrentOldestSideChain(b *bolt.Bucket) int {
 
 	if len(sideChainIndex) == 1 {
 		for k := range sideChainIndex {
-			bcm.DeleteOldestSideChain(b, k)
+			bcm.deleteOldestSideChain(b, k)
 			return k
 		}
 	}
@@ -549,7 +433,7 @@ func (bcm *BlockchainManager) GetCurrentOldestSideChain(b *bolt.Bucket) int {
 	tmpIndex = sideChainIndex
 
 	for k := range sideChainIndex {
-		forkBlockHeight := bcm.GetForkBlockHeight(b, k)
+		forkBlockHeight := bcm.getForkBlockHeight(b, k)
 
 		if forkBlockHeight > lowestforkBlockHeight {
 			continue
@@ -574,7 +458,7 @@ func (bcm *BlockchainManager) GetCurrentOldestSideChain(b *bolt.Bucket) int {
 
 	if len(sideChainIndex) == 1 {
 		for k := range sideChainIndex {
-			bcm.DeleteOldestSideChain(b, k)
+			bcm.deleteOldestSideChain(b, k)
 			return k
 		}
 	}
@@ -600,13 +484,13 @@ func (bcm *BlockchainManager) GetCurrentOldestSideChain(b *bolt.Bucket) int {
 		}
 	}
 
-	bcm.DeleteOldestSideChain(b, newIndex)
+	bcm.deleteOldestSideChain(b, newIndex)
 	return newIndex
 }
 
 // DeleteOldestSideChain delete side chain which is the oldest
-func (bcm *BlockchainManager) DeleteOldestSideChain(b *bolt.Bucket, sideChainIndex int) {
-	forkHeight := bcm.GetForkBlockHeight(b, sideChainIndex)
+func (bcm *BlockchainManager) deleteOldestSideChain(b *bolt.Bucket, sideChainIndex int) {
+	forkHeight := bcm.getForkBlockHeight(b, sideChainIndex)
 	bc := &Blockchain{bcm.Hash}
 
 	bcsi := bc.Iterator(b.Get([]byte(IntToByte(sideChainIndex))))
@@ -624,7 +508,7 @@ func (bcm *BlockchainManager) DeleteOldestSideChain(b *bolt.Bucket, sideChainInd
 }
 
 // GetForkBlockHeight get fork height of Blockchain
-func (bcm *BlockchainManager) GetForkBlockHeight(b *bolt.Bucket, sideChainIndex int) int64 {
+func (bcm *BlockchainManager) getForkBlockHeight(b *bolt.Bucket, sideChainIndex int) int64 {
 	var height int64 = 0
 
 	mainChainMap := []string{}
@@ -666,7 +550,7 @@ func (bcm *BlockchainManager) GetForkBlockHeight(b *bolt.Bucket, sideChainIndex 
 }
 
 // GetBlockchainManagerInfo ...
-func GetBlockchainManagerInfo(bcm *BlockchainManager) *BlockchainManagerInfo {
+func newBlockchainManagerInfo(bcm *BlockchainManager) *BlockchainManagerInfo {
 	bcm.mtx.Lock()
 	defer bcm.mtx.Unlock()
 
@@ -680,7 +564,7 @@ func GetBlockchainManagerInfo(bcm *BlockchainManager) *BlockchainManagerInfo {
 	return nbcm
 }
 
-func (bcm *BlockchainManager) Update(block *Block) {
+func (bcm *BlockchainManager) updateBlockchainManager(block *Block) {
 	bcm.mtx.Lock()
 	defer bcm.mtx.Unlock()
 
@@ -689,4 +573,47 @@ func (bcm *BlockchainManager) Update(block *Block) {
 	bcm.TransactionNum = block.TransactionNum
 	bcm.Transactions = block.Transactions
 	bcm.BlockHeader = block.BlockHeader
+}
+
+func (bcm *BlockchainManager) getNewSidechainTimestamp(blockHash []byte) string {
+	timestamp := bcm.checkSidechainTimestamp(string(blockHash))
+
+	if timestamp == -1 {
+		timestamp = time.Now().Unix()
+	}
+
+	return strconv.FormatInt(timestamp, 10)
+}
+
+func (bcm *BlockchainManager) checkSidechainTimestamp(blockID string) int64 {
+	timestamps := bcm.getSidechainTimestamp()
+
+	for timestamp, blockId := range timestamps {
+		if blockID == blockId {
+			return timestamp
+		}
+	}
+
+	return -1
+}
+
+func (bcm *BlockchainManager) deleteSidechainNotif(timestamp int64) {
+	bcm.mtx.Lock()
+	defer bcm.mtx.Unlock()
+
+	delete(bcm.SidechanTimestamp, timestamp)
+}
+
+func (bcm *BlockchainManager) addSidechainNotif(timestamp int64, blockID string) {
+	bcm.mtx.Lock()
+	defer bcm.mtx.Unlock()
+
+	bcm.SidechanTimestamp[timestamp] = blockID
+}
+
+func (bcm *BlockchainManager) getSidechainTimestamp() map[int64]string {
+	bcm.mtx.Lock()
+	defer bcm.mtx.Unlock()
+
+	return bcm.SidechanTimestamp
 }

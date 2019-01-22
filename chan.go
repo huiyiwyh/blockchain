@@ -13,6 +13,12 @@ var BCMToSBlockByHash chan *BlockByHash = make(chan *BlockByHash, 20)
 // BCMToMTxs defines a chan that BlockchainManager sends txs to MempoolManager
 var BCMToMTxs chan []*Transaction = make(chan []*Transaction, 20)
 
+// BCMToMSendBCM defines a chan that BlockchainManager sends BlockchainManagerInfo to MempoolManager
+var BCMToMSendBCM chan *BlockchainManagerInfo = make(chan *BlockchainManagerInfo, 20)
+
+// MToBCMGetBCM defines a chan that MempoolManager sends GetBlockchainManagerInfo to BlockchainManager
+var MToBCMGetBCM chan *Notification = make(chan *Notification, 20)
+
 // MToBCMTxs defines a chan that MempoolManager sends txs to BlockchainManager
 var MToBCMTxs chan []*Transaction = make(chan []*Transaction, 20)
 

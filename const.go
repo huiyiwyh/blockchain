@@ -32,3 +32,6 @@ const genesisCoinbaseData = "The Times 03/Jan/2009 Chancellor on brink of second
 
 // isAllowedSideChainNum defines how many side chan will be saved
 const isAllowedSideChainNum = 5
+
+// subsidy defines when a block mind ,the miner can receive 20
+const subsidy = 20

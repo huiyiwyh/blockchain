@@ -15,8 +15,6 @@ import (
 	"log"
 )
 
-const subsidy = 20
-
 // Transaction represents a Bitcoin transaction
 type Transaction struct {
 	ID   []byte
