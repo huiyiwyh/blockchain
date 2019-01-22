@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/gob"
-	"fmt"
 	"log"
 	"time"
 )
@@ -144,7 +143,6 @@ func DeserializeBlock(d []byte) *Block {
 // VerifyPoW ...
 func (block *Block) VerifyPoW() bool {
 	pow := NewProofOfWork(block)
-	fmt.Println(pow.block.BlockHeader)
 	if !pow.Validate() {
 		return false
 	}

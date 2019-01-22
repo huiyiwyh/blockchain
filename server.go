@@ -367,7 +367,7 @@ func StartServer(minerAddress string) {
 	knowNodes := []string{"191.167.2.1:3000", "191.167.2.17:3000", "191.167.1.111:3000", "191.167.1.146:3000"}
 	SToPPeer <- knowNodes
 
-	//go MindOtherNodeVersion()
+	go MindOtherNodeVersion()
 
 	for {
 		conn, err := ln.Accept()
@@ -386,6 +386,7 @@ func GetPeers() []string {
 	return MapToSlice(npm.Peers)
 }
 
+// MindOtherNodeVersion ...
 func MindOtherNodeVersion() {
 	knowNodes := GetPeers()
 
@@ -402,6 +403,7 @@ func MindOtherNodeVersion() {
 	}
 }
 
+// MindOtherNodeTx ...
 func MindOtherNodeTx(nodeFrom string, tx *Transaction) {
 	knowNodes := GetPeers()
 
@@ -412,6 +414,7 @@ func MindOtherNodeTx(nodeFrom string, tx *Transaction) {
 	}
 }
 
+// MindOtherNodeBlock ...
 func MindOtherNodeBlock(nodeFrom string, block *Block) {
 	knownNodes := GetPeers()
 	for _, node := range knownNodes {
