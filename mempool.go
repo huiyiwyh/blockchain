@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/hex"
 	"sync"
+	"time"
 )
 
 // MempoolManager ...
@@ -19,10 +20,12 @@ func NewMempoolManager() *MempoolManager {
 
 // Processor manages received txs
 func (mp *MempoolManager) Processor() {
+	go mp.MaybeSendTxsToBCM()
+
 	for {
 		select {
 		case tx := <-SToMTx:
-			go mp.MaybeSendTxsToBCM(tx)
+			go mp.AddTx(tx)
 		case txs := <-BCMToMTxs:
 			go mp.DeleteTxs(txs)
 		case <-SToMGetM:
@@ -34,27 +37,26 @@ func (mp *MempoolManager) Processor() {
 }
 
 // MaybeSendTxsToBCM ...
-func (mp *MempoolManager) MaybeSendTxsToBCM(tx *Transaction) {
-	mp.mtx.Lock()
-	defer mp.mtx.Unlock()
-
-	if mp.mempool[hex.EncodeToString(tx.ID)] == nil {
-		mp.mempool[hex.EncodeToString(tx.ID)] = tx
-		mp.txNum++
-		//fmt.Println("a new tx has been send to mempool")
-		//fmt.Println("txs in mempool's number :", mp.txNum)
-	}
-
-	txNum := mp.txNum
-	if txNum > 0 {
-		var txs []*Transaction
-
-		for _, tx := range mp.mempool {
-			txs = append(txs, tx)
-			delete(mp.mempool, hex.EncodeToString(tx.ID))
-			mp.txNum--
+func (mp *MempoolManager) MaybeSendTxsToBCM() {
+	for {
+		time.Sleep(1 * time.Second)
+		mp.mtx.Lock()
+		if time.Now().Unix()%20 != 0 {
+			mp.mtx.Unlock()
+			continue
 		}
-		MToBCMTxs <- txs
+
+		if mp.txNum > 0 {
+			var txs []*Transaction
+
+			for _, tx := range mp.mempool {
+				txs = append(txs, tx)
+				delete(mp.mempool, hex.EncodeToString(tx.ID))
+				mp.txNum--
+			}
+			MToBCMTxs <- txs
+		}
+		mp.mtx.Unlock()
 	}
 }
 
@@ -66,8 +68,6 @@ func (mp *MempoolManager) AddTx(tx *Transaction) {
 	if mp.mempool[hex.EncodeToString(tx.ID)] == nil {
 		mp.mempool[hex.EncodeToString(tx.ID)] = tx
 		mp.txNum++
-		//fmt.Println("a new tx has been send to mempool")
-		//fmt.Println("txs in mempool's number :", mp.txNum)
 	}
 }
 
