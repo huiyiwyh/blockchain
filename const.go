@@ -35,3 +35,6 @@ const isAllowedSideChainNum = 5
 
 // subsidy defines when a block mind ,the miner can receive 20
 const subsidy = 20
+
+// port defines which port to transport informations
+const port = "3000"

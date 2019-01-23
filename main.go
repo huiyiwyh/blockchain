@@ -7,25 +7,30 @@ import (
 )
 
 func main() {
-	ipAddrs, err := net.InterfaceAddrs()
+	CreateOrLoadBlockchaindb()
+	getLocalPeer()
+
+	cli := CLI{}
+	cli.Run()
+}
+
+func getLocalPeer() {
+	ips, err := net.InterfaceAddrs()
 
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
-	for _, ipAddr := range ipAddrs {
+	var localPeer string
+
+	for _, ipAddr := range ips {
 		if ipnet, ok := ipAddr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
 			if ipnet.IP.To4() != nil {
-				localNodeAddress = ipnet.IP.String()
+				localPeer = ipnet.IP.String()
 				break
 			}
 		}
 	}
-
-	localNodeAddress = fmt.Sprintf(localNodeAddress + ":3000")
-	CreateOrLoadBlockchaindb()
-
-	cli := CLI{}
-	cli.Run()
+	LocalPeer = localPeer + ":3000"
 }

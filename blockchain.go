@@ -1,8 +1,8 @@
 package main
 
 import (
+	"encoding/gob"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 
@@ -98,14 +98,17 @@ func LoadTopBlock() (*Block, error) {
 
 // NewBlockchain creates a new Blockchain with genesis Block
 func NewBlockchain() (*Blockchain, error) {
-	resp, err := http.Get("http://127.0.0.1:8080/getbcm")
+	resp, err := http.Get("http://127.0.0.1:8080/getBlockchainMangerInfo")
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	var blockchainInfo BlockchainInfo
 
-	bc := &Blockchain{body}
+	dec := gob.NewDecoder(resp.Body)
+	err = dec.Decode(&blockchainInfo)
+
+	bc := &Blockchain{blockchainInfo.Hash}
 	return bc, nil
 }

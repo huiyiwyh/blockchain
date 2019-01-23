@@ -21,20 +21,22 @@ type BlockchainManager struct {
 	Height            int64
 	SidechanTimestamp map[int64]string
 	IsMining          bool
+	MiningAddress     string
 	mtx               *sync.Mutex
 }
 
 // BlockchainManagerInfo ...
-type BlockchainManagerInfo struct {
+type BlockchainInfo struct {
 	BlockHeader    *BlockHeader
 	Hash           []byte
 	TransactionNum int
 	Transactions   []*Transaction
 	Height         int64
+	IsMiner        bool
 }
 
 // NewBlockchainManager returns a new BlockchainManager
-func NewBlockchainManager() *BlockchainManager {
+func NewBlockchainManager(miningAddress string) *BlockchainManager {
 	block, _ := LoadTopBlock()
 
 	return &BlockchainManager{
@@ -45,6 +47,7 @@ func NewBlockchainManager() *BlockchainManager {
 		block.Height,
 		make(map[int64]string),
 		false,
+		miningAddress,
 		new(sync.Mutex),
 	}
 }
@@ -58,12 +61,12 @@ func (bcm *BlockchainManager) Processor() {
 			go bcm.validateBlockIsValidAndAdd(block)
 		case txs := <-MToBTxs:
 			go bcm.mineBlock(txs)
-		case <-CToBGetBCMI:
-			go bcm.returnCliBlockchainManagerInfo()
-		case <-SToBGetBCMI:
-			go bcm.returnServerBlockchainManagerInfo()
-		case <-MToBGetBCMI:
-			go bcm.returnMempoolBlockchainManagerInfo()
+		case <-CToBGetBI:
+			go bcm.returnCliBlockchainInfo()
+		case <-SToBGetBI:
+			go bcm.returnServerBlockchainInfo()
+		case <-MToBGetBI:
+			go bcm.returnMempoolBlockchainInfo()
 		case blockByHash := <-SToBGetBlockByHash:
 			go bcm.returnServerBlockbyHash(blockByHash)
 		case blocksHash := <-SToBGetBlocksHash:
@@ -73,35 +76,35 @@ func (bcm *BlockchainManager) Processor() {
 }
 
 // ReturnServerBlockchainManagerInfo returns BlockchainManagerinfo to Server
-func (bcm *BlockchainManager) returnServerBlockchainManagerInfo() {
-	nbcmi := newBlockchainManagerInfo(bcm)
-	BToSBCMI <- nbcmi
+func (bcm *BlockchainManager) returnServerBlockchainInfo() {
+	blockchainInfo := newBlockchainInfo(bcm)
+	BToSBI <- blockchainInfo
 }
 
 // ReturnCliBlockchainManagerInfo returns BlockchainManagerinfo to cli
-func (bcm *BlockchainManager) returnCliBlockchainManagerInfo() {
-	nbcmi := newBlockchainManagerInfo(bcm)
-	BToCBCMI <- nbcmi
+func (bcm *BlockchainManager) returnCliBlockchainInfo() {
+	blockchainInfo := newBlockchainInfo(bcm)
+	BToCBI <- blockchainInfo
 }
 
 // ReturnMempoolBlockchainManagerInfo returns BlockchainManagerinfo to mempool
-func (bcm *BlockchainManager) returnMempoolBlockchainManagerInfo() {
-	nbcmi := newBlockchainManagerInfo(bcm)
-	BToMBCMI <- nbcmi
+func (bcm *BlockchainManager) returnMempoolBlockchainInfo() {
+	blockchainInfo := newBlockchainInfo(bcm)
+	BToMBI <- blockchainInfo
 }
 
 // returnServerBlockbyHash returns BlockByHash to server
 func (bcm *BlockchainManager) returnServerBlockbyHash(blockByHash *BlockByHash) {
 	block, err := bcm.getBlockByHash(blockByHash.Hash)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
-	BToSBlockByHash <- &BlockByHash{blockByHash.NodeFrom, blockByHash.Hash, block}
+	BToSBlockByHash <- &BlockByHash{blockByHash.PeerFrom, blockByHash.Hash, block}
 }
 
 // returnServerBlocksHash returns BlocksHash to server
 func (bcm *BlockchainManager) returnServerBlocksHash(blocksHash *BlocksHash) {
-	BToSBlocksHash <- &BlocksHash{blocksHash.NodeFrom, bcm.getBlocksHash()}
+	BToSBlocksHash <- &BlocksHash{blocksHash.PeerFrom, bcm.getBlocksHash()}
 }
 
 // ValidateBlockIsValidAndAdd refers BlockchainManager will validate the received block
@@ -133,6 +136,7 @@ func (bcm *BlockchainManager) validateBlockIsValidAndAdd(block *Block) {
 
 // MineBlock ...
 func (bcm *BlockchainManager) mineBlock(txs []*Transaction) {
+	miningAddress := bcm.getMiningAddress()
 	cbTx := NewCoinbaseTX(miningAddress, "")
 	txs = append(txs, cbTx)
 
@@ -155,7 +159,16 @@ func (bcm *BlockchainManager) mineBlock(txs []*Transaction) {
 	BToSBlock <- newBlock
 }
 
-// GetHeight returns height stored in BlockchainManager
+// getMiningAddress returns miningaddress in BlockchainManager
+func (bcm *BlockchainManager) getMiningAddress() string {
+	bcm.mtx.Lock()
+	defer bcm.mtx.Unlock()
+
+	miningAddress := bcm.MiningAddress
+	return miningAddress
+}
+
+// getHeight returns height stored in BlockchainManager
 func (bcm *BlockchainManager) getHeight() int64 {
 	bcm.mtx.Lock()
 	defer bcm.mtx.Unlock()
@@ -164,7 +177,7 @@ func (bcm *BlockchainManager) getHeight() int64 {
 	return height
 }
 
-// GetVersion returns version stored in BlockchainManager
+// getVersion returns version stored in BlockchainManager
 func (bcm *BlockchainManager) getVersion() int {
 	bcm.mtx.Lock()
 	defer bcm.mtx.Unlock()
@@ -174,7 +187,7 @@ func (bcm *BlockchainManager) getVersion() int {
 
 }
 
-// GetHash returns the hash of the latest block
+// getHash returns the hash of the latest block
 func (bcm *BlockchainManager) getHash() []byte {
 	bcm.mtx.Lock()
 	defer bcm.mtx.Unlock()
@@ -183,7 +196,7 @@ func (bcm *BlockchainManager) getHash() []byte {
 	return hash[:]
 }
 
-//
+// changeIsMining changes when blockchainManager mined block whether or not
 func (bcm *BlockchainManager) changeIsMining(isMining bool) {
 	bcm.mtx.Lock()
 	defer bcm.mtx.Unlock()
@@ -293,7 +306,6 @@ func (bcm *BlockchainManager) addBlock(newBlock *Block) {
 		blockInOrphanBlocksHash := o.Get(newBlock.Hash)
 
 		if blockInBlocksHash != nil || blockInOrphanBlocksHash != nil {
-			// fmt.Printf("the block %x is in the main chain or orphan pool\n", newBlock.Hash)
 			return nil
 		}
 
@@ -313,7 +325,6 @@ func (bcm *BlockchainManager) addBlock(newBlock *Block) {
 					if err != nil {
 						log.Panic(err)
 					}
-					// fmt.Printf("block %x as mainchain to be added\n", newBlock.Hash)
 					falg = true
 					break
 				}
@@ -329,7 +340,6 @@ func (bcm *BlockchainManager) addBlock(newBlock *Block) {
 				if err != nil {
 					log.Panic(err)
 				}
-				// fmt.Printf("block %x as sidechain to be added\n", newBlock.Hash)
 				falg = true
 				break
 			}
@@ -340,12 +350,10 @@ func (bcm *BlockchainManager) addBlock(newBlock *Block) {
 			if err != nil {
 				log.Panic(err)
 			}
-			// fmt.Printf("block %x as orphanblock to be added\n", newBlock.Hash)
 
 			return nil
 		}
 
-		// fmt.Println("UpdateOrphanBlock")
 		// after newBlock is added ,check the orphan pool whether the orpahan block can be add into Blockchain
 	UpdateOrphanBlock:
 		oc := o.Cursor()
@@ -363,14 +371,12 @@ func (bcm *BlockchainManager) addBlock(newBlock *Block) {
 					if err != nil {
 						log.Panic(err)
 					}
-					// fmt.Printf("block %x as mainchain to be added\n", block.Hash)
 				} else {
 					timestamp := bcm.getNewSidechainTimestamp(newBlock.Hash)
 					err = b.Put([]byte(timestamp), block.Hash)
 					if err != nil {
 						log.Panic(err)
 					}
-					// fmt.Printf("block %x as sidechain to be added\n", block.Hash)
 
 					// compare height of the sidechain and mainchain
 					// if sidechain's height higher than the height of mainchain, change the tag of the hash
@@ -391,7 +397,6 @@ func (bcm *BlockchainManager) addBlock(newBlock *Block) {
 						if err != nil {
 							log.Panic(err)
 						}
-						// fmt.Println("sidechain change to mainchain")
 					}
 					break
 				}
@@ -411,8 +416,6 @@ func (bcm *BlockchainManager) addBlock(newBlock *Block) {
 	if err != nil {
 		log.Panic(err)
 	}
-
-	// fmt.Println("end")
 }
 
 // GetCurrentOldestSideChain get current oldest side chain
@@ -584,18 +587,23 @@ func (bcm *BlockchainManager) getForkBlockHeight(b *bolt.Bucket, sideChainIndex 
 }
 
 // GetBlockchainManagerInfo ...
-func newBlockchainManagerInfo(bcm *BlockchainManager) *BlockchainManagerInfo {
+func newBlockchainInfo(bcm *BlockchainManager) *BlockchainInfo {
 	bcm.mtx.Lock()
 	defer bcm.mtx.Unlock()
 
-	nbcm := &BlockchainManagerInfo{}
-	nbcm.Hash = bcm.Hash
-	nbcm.Height = bcm.Height
-	nbcm.TransactionNum = bcm.TransactionNum
-	nbcm.Transactions = bcm.Transactions
-	nbcm.BlockHeader = bcm.BlockHeader
+	blockchainInfo := &BlockchainInfo{}
+	blockchainInfo.Hash = bcm.Hash
+	blockchainInfo.Height = bcm.Height
+	blockchainInfo.TransactionNum = bcm.TransactionNum
+	blockchainInfo.Transactions = bcm.Transactions
+	blockchainInfo.BlockHeader = bcm.BlockHeader
+	if bcm.MiningAddress != "" {
+		blockchainInfo.IsMiner = true
+	} else {
+		blockchainInfo.IsMiner = false
+	}
 
-	return nbcm
+	return blockchainInfo
 }
 
 func (bcm *BlockchainManager) updateBlockchainManager(block *Block) {

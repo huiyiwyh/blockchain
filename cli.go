@@ -42,7 +42,6 @@ func (cli *CLI) Run() {
 	getWalletInfoCmd := flag.NewFlagSet("getwalletinfo", flag.ExitOnError)
 	getPeerInfoCmd := flag.NewFlagSet("getpeerinfo", flag.ExitOnError)
 	getBlockchainInfoCmd := flag.NewFlagSet("getblockchaininfo", flag.ExitOnError)
-	reindexUTXOCmd := flag.NewFlagSet("reindexutxo", flag.ExitOnError)
 	createTxCmd := flag.NewFlagSet("createtx", flag.ExitOnError)
 	startNodeCmd := flag.NewFlagSet("startnode", flag.ExitOnError)
 
@@ -90,11 +89,6 @@ func (cli *CLI) Run() {
 		if err != nil {
 			log.Panic(err)
 		}
-	case "reindexutxo":
-		err := reindexUTXOCmd.Parse(os.Args[2:])
-		if err != nil {
-			log.Panic(err)
-		}
 	case "createtx":
 		err := createTxCmd.Parse(os.Args[2:])
 		if err != nil {
@@ -102,6 +96,11 @@ func (cli *CLI) Run() {
 		}
 	case "startnode":
 		err := startNodeCmd.Parse(os.Args[2:])
+		if err != nil {
+			log.Panic(err)
+		}
+	case "getpeerinfo":
+		err := getPeerInfoCmd.Parse(os.Args[2:])
 		if err != nil {
 			log.Panic(err)
 		}
@@ -148,10 +147,6 @@ func (cli *CLI) Run() {
 
 	if getBlockchainInfoCmd.Parsed() {
 		cli.getblockchaininfo()
-	}
-
-	if reindexUTXOCmd.Parsed() {
-		cli.reindexUTXO()
 	}
 
 	if createTxCmd.Parsed() {

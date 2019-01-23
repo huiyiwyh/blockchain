@@ -188,6 +188,7 @@ func NewUTXOTransaction(wallet *Wallet, to string, amount int, UTXOSet *UTXOSet)
 
 	if acc < amount {
 		log.Println("ERROR: Not enough funds")
+		return nil
 	}
 
 	// Build a list of inputs

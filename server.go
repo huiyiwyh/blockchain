@@ -12,42 +12,39 @@ import (
 )
 
 type block struct {
-	NodeFrom string
+	PeerFrom string
 	Block    []byte
 }
 
 type getblocks struct {
-	NodeFrom string
+	PeerFrom string
 }
 
 type getdata struct {
-	NodeFrom string
+	PeerFrom string
 	Type     string
 	ID       []byte
 }
 
 type inv struct {
-	NodeFrom string
+	PeerFrom string
 	Type     string
 	Items    [][]byte
 }
 
 type tx struct {
-	NodeFrom    string
+	PeerFrom    string
 	Transaction []byte
 }
 
 type version struct {
-	NodeFrom   string
+	PeerFrom   string
 	Version    int
 	BestHeight int64
 }
 
-// localNodeAddress defines local ip + port
-var localNodeAddress string
-
-// miningAddress defines a wallet address to mine
-var miningAddress string
+// LocalPeer defines local ip + port
+var LocalPeer string
 
 // blocksInTransit stores blocks hash
 var blocksInTransit = [][]byte{}
@@ -78,70 +75,70 @@ func extractCommand(request []byte) []byte {
 	return request[:commandLength]
 }
 
-func sendBlock(nodeTo string, b *Block) {
-	data := block{localNodeAddress, b.Serialize()}
+func sendBlock(PeerTo string, b *Block) {
+	data := block{LocalPeer, b.Serialize()}
 	payload := gobEncode(data)
 	request := append(commandToBytes("block"), payload...)
 
-	sendData(nodeTo, request)
+	sendData(PeerTo, request)
 }
 
-func sendInv(nodeTo, kind string, items [][]byte) {
-	inventory := inv{localNodeAddress, kind, items}
+func sendInv(PeerTo, kind string, items [][]byte) {
+	inventory := inv{LocalPeer, kind, items}
 	payload := gobEncode(inventory)
 	request := append(commandToBytes("inv"), payload...)
 
-	sendData(nodeTo, request)
+	sendData(PeerTo, request)
 }
 
-func sendGetBlocks(nodeTo string) {
-	payload := gobEncode(getblocks{localNodeAddress})
+func sendGetBlocks(PeerTo string) {
+	payload := gobEncode(getblocks{LocalPeer})
 	request := append(commandToBytes("getblocks"), payload...)
 
-	sendData(nodeTo, request)
+	sendData(PeerTo, request)
 }
 
-func sendGetData(nodeTo, kind string, id []byte) {
-	payload := gobEncode(getdata{localNodeAddress, kind, id})
+func sendGetData(PeerTo, kind string, id []byte) {
+	payload := gobEncode(getdata{LocalPeer, kind, id})
 	request := append(commandToBytes("getdata"), payload...)
 
-	sendData(nodeTo, request)
+	sendData(PeerTo, request)
 }
 
-func sendTx(nodeTo string, tnx *Transaction) {
-	data := tx{localNodeAddress, tnx.Serialize()}
+func sendTx(PeerTo string, tnx *Transaction) {
+	data := tx{LocalPeer, tnx.Serialize()}
 	payload := gobEncode(data)
 	request := append(commandToBytes("tx"), payload...)
 
-	sendData(nodeTo, request)
+	sendData(PeerTo, request)
 }
 
-func sendVersion(nodeTo string, blockVersion int, bestHeight int64) {
-	payload := gobEncode(version{localNodeAddress, blockVersion, bestHeight})
+func sendVersion(PeerTo string, blockVersion int, bestHeight int64) {
+	payload := gobEncode(version{LocalPeer, blockVersion, bestHeight})
 	request := append(commandToBytes("version"), payload...)
 
-	sendData(nodeTo, request)
+	sendData(PeerTo, request)
 }
 
-func sendData(nodeTo string, data []byte) {
-	conn, err := net.Dial(protocol, nodeTo)
+func sendData(PeerTo string, data []byte) {
+	conn, err := net.Dial(protocol, PeerTo)
 	if err != nil {
-		fmt.Printf("%s is not available\n", nodeTo)
+		fmt.Printf("%s is not available\n", PeerTo)
 
-		SToPGetPMI <- &Notification{}
-		npmi := <-PToSPMI
-		knownNodes := MapToSlice(npmi.Peers)
+		SToPGetPI <- &Notification{}
+		pi := <-PToSPI
+		knownPeers := MapToSlice(pi.Peers)
 
-		var updatedNodes []string
+		var updatedPeers []string
 
-		for _, node := range knownNodes {
-			if node != nodeTo {
-				updatedNodes = append(updatedNodes, node)
+		for _, Peer := range knownPeers {
+			if Peer != PeerTo {
+				updatedPeers = append(updatedPeers, Peer)
 			}
 		}
 
-		knownNodes = updatedNodes
-		SToPPeer <- knownNodes
+		knownPeers = updatedPeers
+		SToPPeer <- knownPeers
 
 		return
 	}
@@ -167,18 +164,18 @@ func handleBlock(request []byte) {
 	blockData := payload.Block
 	block := DeserializeBlock(blockData)
 
-	fmt.Printf("Recevied a new block! from %s\n", payload.NodeFrom)
+	fmt.Printf("Recevied a new block! from %s\n", payload.PeerFrom)
 
 	SToBBlock <- block
 
 	if len(blocksInTransit) > 0 {
 		blockHash := blocksInTransit[0]
-		sendGetData(payload.NodeFrom, "block", blockHash)
+		sendGetData(payload.PeerFrom, "block", blockHash)
 
 		blocksInTransit = blocksInTransit[1:]
 	}
 
-	go MindOtherNodeBlock(payload.NodeFrom, block)
+	go MindOtherPeerBlock(payload.PeerFrom, block)
 }
 
 func handleInv(request []byte) {
@@ -192,13 +189,13 @@ func handleInv(request []byte) {
 		log.Panic(err)
 	}
 
-	fmt.Printf("Recevied inventory with %d %s from %s\n", len(payload.Items), payload.Type, payload.NodeFrom)
+	fmt.Printf("Recevied inventory with %d %s from %s\n", len(payload.Items), payload.Type, payload.PeerFrom)
 
 	if payload.Type == "block" {
 		blocksInTransit = payload.Items
 
 		blockHash := payload.Items[0]
-		sendGetData(payload.NodeFrom, "block", blockHash)
+		sendGetData(payload.PeerFrom, "block", blockHash)
 
 		newInTransit := [][]byte{}
 		for _, b := range blocksInTransit {
@@ -212,10 +209,10 @@ func handleInv(request []byte) {
 	if payload.Type == "tx" {
 		txID := hex.EncodeToString(payload.Items[0])
 
-		SToMGetTxByHash <- &TxByHash{payload.NodeFrom, txID, nil}
+		SToMGetTxByHash <- &TxByHash{payload.PeerFrom, txID, nil}
 
-		if txByHash := <-MToSSendTxByHash; txByHash.Tx == nil {
-			sendGetData(txByHash.NodeFrom, "tx", payload.Items[0])
+		if txByHash := <-MToSTxByHash; txByHash.Tx == nil {
+			sendGetData(txByHash.PeerFrom, "tx", payload.Items[0])
 		}
 	}
 }
@@ -231,12 +228,12 @@ func handleGetBlocks(request []byte) {
 		log.Panic(err)
 	}
 
-	fmt.Printf("Received getblocks command from %s\n", payload.NodeFrom)
+	fmt.Printf("Received getblocks command from %s\n", payload.PeerFrom)
 
-	SToBGetBlocksHash <- &BlocksHash{payload.NodeFrom, nil}
+	SToBGetBlocksHash <- &BlocksHash{payload.PeerFrom, nil}
 	blockByHash := <-BToSBlocksHash
 
-	sendInv(blockByHash.NodeFrom, "block", blockByHash.Hashs)
+	sendInv(blockByHash.PeerFrom, "block", blockByHash.Hashs)
 }
 
 func handleGetData(request []byte) {
@@ -250,23 +247,23 @@ func handleGetData(request []byte) {
 		log.Panic(err)
 	}
 
-	fmt.Printf("Received getdata command from %s\n", payload.NodeFrom)
+	fmt.Printf("Received getdata command from %s\n", payload.PeerFrom)
 
 	if payload.Type == "block" {
-		SToBGetBlockByHash <- &BlockByHash{payload.NodeFrom, payload.ID, nil}
+		SToBGetBlockByHash <- &BlockByHash{payload.PeerFrom, payload.ID, nil}
 
 		if blockByHash := <-BToSBlockByHash; blockByHash.Block != nil {
-			sendBlock(blockByHash.NodeFrom, blockByHash.Block)
+			sendBlock(blockByHash.PeerFrom, blockByHash.Block)
 		}
 	}
 
 	if payload.Type == "tx" {
 		txID := hex.EncodeToString(payload.ID)
 
-		SToMGetTxByHash <- &TxByHash{payload.NodeFrom, txID, nil}
+		SToMGetTxByHash <- &TxByHash{payload.PeerFrom, txID, nil}
 
-		if txByHash := <-MToSSendTxByHash; txByHash.Tx != nil {
-			sendTx(txByHash.NodeFrom, txByHash.Tx)
+		if txByHash := <-MToSTxByHash; txByHash.Tx != nil {
+			sendTx(txByHash.PeerFrom, txByHash.Tx)
 		}
 	}
 }
@@ -285,11 +282,16 @@ func handleTx(request []byte) {
 	txData := payload.Transaction
 	tx := DeserializeTransaction(txData)
 
-	fmt.Printf("Received tx command from %s\n", payload.NodeFrom)
+	fmt.Printf("Received tx command from %s\n", payload.PeerFrom)
 
-	SToMTx <- tx
+	SToBGetBI <- &Notification{}
+	blockchainInfo := <-BToSBI
 
-	go MindOtherNodeTx(payload.NodeFrom, tx)
+	if blockchainInfo.IsMiner {
+		SToMTx <- tx
+	}
+
+	go MindOtherPeerTx(payload.PeerFrom, tx)
 }
 
 func handleVersion(request []byte) {
@@ -303,10 +305,10 @@ func handleVersion(request []byte) {
 		log.Panic(err)
 	}
 
-	fmt.Printf("Received version command from %s\n", payload.NodeFrom)
+	fmt.Printf("Received version command from %s\n", payload.PeerFrom)
 
-	SToBGetBCMI <- &Notification{}
-	nbcm := <-BToSBCMI
+	SToBGetBI <- &Notification{}
+	nbcm := <-BToSBI
 
 	myBestHeight := nbcm.Height
 	myBlockVersion := nbcm.BlockHeader.Version
@@ -314,11 +316,11 @@ func handleVersion(request []byte) {
 	foreignerBestHeight := payload.BestHeight
 
 	if myBestHeight > foreignerBestHeight {
-		sendVersion(payload.NodeFrom, myBlockVersion, myBestHeight)
+		sendVersion(payload.PeerFrom, myBlockVersion, myBestHeight)
 	}
 
 	if myBestHeight < foreignerBestHeight {
-		sendGetBlocks(payload.NodeFrom)
+		sendGetBlocks(payload.PeerFrom)
 	}
 }
 
@@ -349,17 +351,15 @@ func handleConnection(conn net.Conn) {
 	}
 }
 
-// StartServer starts a node
+// StartServer starts a Peer
 func StartServer(minerAddress string) {
-	miningAddress = minerAddress
-
-	ln, err := net.Listen(protocol, localNodeAddress)
+	ln, err := net.Listen(protocol, LocalPeer)
 	if err != nil {
 		log.Panic(err)
 	}
 	defer ln.Close()
 
-	bcm := NewBlockchainManager()
+	bcm := NewBlockchainManager(minerAddress)
 	go bcm.Processor()
 
 	mm := NewMempoolManager()
@@ -368,10 +368,10 @@ func StartServer(minerAddress string) {
 	pm := NewPeerManager()
 	go pm.Processor()
 
-	knowNodes := []string{"191.167.1.111:3000", "191.167.1.146:3000"}
-	SToPPeer <- knowNodes
+	knowPeers := []string{"191.167.1.111:3000", "191.167.1.146:3000"}
+	SToPPeer <- knowPeers
 
-	go MindOtherNodeVersion()
+	go MindOtherPeerVersion()
 
 	go BoardcastMinedBlock()
 
@@ -386,47 +386,47 @@ func StartServer(minerAddress string) {
 
 // GetPeers ...
 func GetPeers() []string {
-	SToPGetPMI <- &Notification{}
-	npmi := <-PToSPMI
+	SToPGetPI <- &Notification{}
+	npmi := <-PToSPI
 
 	return MapToSlice(npmi.Peers)
 }
 
-// MindOtherNodeVersion ...
-func MindOtherNodeVersion() {
-	knowNodes := GetPeers()
+// MindOtherPeerVersion ...
+func MindOtherPeerVersion() {
+	knowPeers := GetPeers()
 
-	SToBGetBCMI <- &Notification{}
-	nbcm := <-BToSBCMI
+	SToBGetBI <- &Notification{}
+	nbcm := <-BToSBI
 
 	myBestHeight := nbcm.Height
 	myBlockVersion := nbcm.BlockHeader.Version
 
-	for _, node := range knowNodes {
-		if node != localNodeAddress {
-			sendVersion(node, myBlockVersion, myBestHeight)
+	for _, peer := range knowPeers {
+		if peer != LocalPeer {
+			sendVersion(peer, myBlockVersion, myBestHeight)
 		}
 	}
 }
 
-// MindOtherNodeTx ...
-func MindOtherNodeTx(nodeFrom string, tx *Transaction) {
-	knowNodes := GetPeers()
+// MindOtherPeerTx ...
+func MindOtherPeerTx(peerFrom string, tx *Transaction) {
+	knowPeers := GetPeers()
 
-	for _, node := range knowNodes {
-		if node != localNodeAddress && node != nodeFrom {
-			sendInv(node, "tx", [][]byte{tx.ID})
+	for _, peer := range knowPeers {
+		if peer != LocalPeer && peer != peerFrom {
+			sendInv(peer, "tx", [][]byte{tx.ID})
 		}
 	}
 }
 
-// MindOtherNodeBlock ...
-func MindOtherNodeBlock(nodeFrom string, block *Block) {
-	knownNodes := GetPeers()
+// MindOtherPeerBlock ...
+func MindOtherPeerBlock(peerFrom string, block *Block) {
+	knownPeers := GetPeers()
 
-	for _, node := range knownNodes {
-		if node != localNodeAddress && node != nodeFrom {
-			sendInv(node, "block", [][]byte{block.Hash})
+	for _, peer := range knownPeers {
+		if peer != LocalPeer && peer != peerFrom {
+			sendInv(peer, "block", [][]byte{block.Hash})
 		}
 	}
 }
@@ -435,11 +435,11 @@ func BoardcastMinedBlock() {
 	for {
 		select {
 		case minedblock := <-BToSBlock:
-			knownNodes := GetPeers()
+			knownPeers := GetPeers()
 
-			for _, node := range knownNodes {
-				if node != localNodeAddress {
-					sendInv(node, "block", [][]byte{minedblock.Hash})
+			for _, peer := range knownPeers {
+				if peer != LocalPeer {
+					sendInv(peer, "block", [][]byte{minedblock.Hash})
 				}
 			}
 		default:

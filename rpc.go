@@ -1,36 +1,46 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"io/ioutil"
 	"net/http"
 	"time"
 )
 
-func getbcm(w http.ResponseWriter, r *http.Request) {
-	CToBGetBCMI <- &Notification{}
-	nbcm := <-BToCBCMI
-
-	w.Write(nbcm.Hash)
+func getBlockchainInfo(w http.ResponseWriter, r *http.Request) {
+	CToBGetBI <- &Notification{}
+	data := gobEncode(<-BToCBI)
+	w.Write(data)
 }
 
-func respondWithJSON(w http.ResponseWriter, r *http.Request, code int, payload interface{}) {
-	response, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("HTTP 500: Internal Server Error"))
-		return
-	}
-	w.WriteHeader(code)
-	w.Write(response)
+func getMempoolInfo(w http.ResponseWriter, r *http.Request) {
+	CToMGetMI <- &Notification{}
+	data := gobEncode(<-MToCMI)
+	w.Write(data)
+
+}
+
+func getPeerInfo(w http.ResponseWriter, r *http.Request) {
+	CToPGetPI <- &Notification{}
+	data := gobEncode(<-PToCPI)
+	w.Write(data)
+}
+
+func addPeer(w http.ResponseWriter, r *http.Request) {
+
+}
+
+func deletePeer(w http.ResponseWriter, r *http.Request) {
+
 }
 
 // Processor ...
 func (c *CLI) Processor() {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/getbcm", getbcm)
+	mux.HandleFunc("/getBlockchainMangerInfo", getBlockchainInfo)
+	mux.HandleFunc("/getMempoolInfo", getMempoolInfo)
+	mux.HandleFunc("/getPeerInfo", getPeerInfo)
+	mux.HandleFunc("/addPeer", addPeer)
+	mux.HandleFunc("/deletePeer", deletePeer)
 
 	server := http.Server{
 		Addr:           "0.0.0.0:8080",
@@ -44,36 +54,4 @@ func (c *CLI) Processor() {
 	if err != nil {
 		panic(err)
 	}
-}
-
-func httpPost() {
-	// resp, err := http.Post("127.0.0.1:15927/",
-	// 	"application/x-www-form-urlencoded",
-	// 	strings.NewReader(""))
-	// if err != nil {
-	// 	fmt.Println(err)
-	// }
-
-	// defer resp.Body.Close()
-	// body, err := ioutil.ReadAll(resp.Body)
-	// if err != nil {
-	// 	// handle error
-	// }
-
-	// fmt.Println(string(body))
-}
-
-func httpGet() {
-	resp, err := http.Get("127.0.0.1:15927/")
-	if err != nil {
-		// handle error
-	}
-
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		// handle error
-	}
-
-	fmt.Println(string(body))
 }

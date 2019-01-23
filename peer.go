@@ -10,7 +10,7 @@ type PeerManager struct {
 }
 
 // PeerManagerInfo ...
-type PeerManagerInfo struct {
+type PeerInfo struct {
 	Peers map[string]string
 	Num   int
 }
@@ -25,16 +25,30 @@ func (pm *PeerManager) Processor() {
 	for {
 		select {
 		case peers := <-SToPPeer:
-			go pm.AddPeer(peers)
-		case <-SToPGetPMI:
-			go pm.GetPeerManagerInfo()
+			go pm.addPeer(peers)
+		case <-SToPGetPI:
+			go pm.returnServerPeerInfo()
+		case <-CToPGetPI:
+			go pm.returnClientPeerInfo()
 		default:
 		}
 	}
 }
 
+// returnClientPeerInfo return PeerInfo to Client
+func (pm *PeerManager) returnClientPeerInfo() {
+	pi := pm.getPeerInfo()
+	PToCPI <- pi
+}
+
+// returnServerPeerInfo return PeerInfo to Server
+func (pm *PeerManager) returnServerPeerInfo() {
+	pi := pm.getPeerInfo()
+	PToSPI <- pi
+}
+
 // AddPeer ...
-func (pm *PeerManager) AddPeer(peers []string) {
+func (pm *PeerManager) addPeer(peers []string) {
 	pm.mtx.Lock()
 	defer pm.mtx.Unlock()
 
@@ -47,23 +61,16 @@ func (pm *PeerManager) AddPeer(peers []string) {
 }
 
 // DeletePeer ...
-func (pm *PeerManager) DeletePeer() {
+func (pm *PeerManager) deletePeer() {
 	pm.mtx.Lock()
 	defer pm.mtx.Unlock()
 
-	// for _, v := range pm.Peers {
-	// 	if pm.Peers[v] == "" {
-	// 		pm.Peers[v] = v
-	// 		pm.Num++
-	// 	}
-	// }
 }
 
 // GetPeerManagerInfo ...
-func (pm *PeerManager) GetPeerManagerInfo() {
+func (pm *PeerManager) getPeerInfo() *PeerInfo {
 	pm.mtx.Lock()
 	defer pm.mtx.Unlock()
 
-	npm := &PeerManagerInfo{pm.Peers, pm.Num}
-	PToSPMI <- npm
+	return &PeerInfo{pm.Peers, pm.Num}
 }

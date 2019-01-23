@@ -32,6 +32,9 @@ func (cli *CLI) createTx(from, to string, amount int) {
 	wallet := wallets.GetWallet(from)
 
 	tx := NewUTXOTransaction(&wallet, to, amount, &UTXOSet)
+	if tx == nil {
+		return
+	}
 
-	sendTx(localNodeAddress, tx)
+	sendTx(LocalPeer, tx)
 }

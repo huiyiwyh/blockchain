@@ -15,7 +15,7 @@ type MempoolManager struct {
 }
 
 // MempoolManagerInfo ...
-type MempoolManagerInfo struct {
+type MempoolInfo struct {
 	mempool map[string]*Transaction
 	txNum   int
 }
@@ -35,7 +35,7 @@ func (mp *MempoolManager) Processor() {
 			go mp.AddTx(tx)
 		case txs := <-BToMTxs:
 			go mp.DeleteTxs(txs)
-		case <-SToMGetMMI:
+		case <-SToMGetMI:
 			go mp.returnServerMempoolManagerInfo()
 		case txByHash := <-SToMGetTxByHash:
 			go mp.GetTx(txByHash)
@@ -44,8 +44,8 @@ func (mp *MempoolManager) Processor() {
 }
 
 func (mp *MempoolManager) returnServerMempoolManagerInfo() {
-	nmm := mp.newMempoolManagerInfo()
-	MToSMMI <- nmm
+	mi := mp.newMempoolInfo()
+	MToSMI <- mi
 }
 
 // MaybeSendTxsToBCM ...
@@ -61,8 +61,8 @@ func (mp *MempoolManager) maybeSendTxsToBCM() {
 		if mp.txNum > 0 {
 			var txs []*Transaction
 
-			MToBGetBCMI <- &Notification{}
-			nbcm := <-BToMBCMI
+			MToBGetBI <- &Notification{}
+			nbcm := <-BToMBI
 
 			u := &UTXOSet{nbcm.Hash}
 
@@ -115,7 +115,7 @@ func (mp *MempoolManager) GetTx(txByHash *TxByHash) {
 	defer mp.mtx.Unlock()
 
 	txByHash.Tx = mp.mempool[txByHash.TxId]
-	MToSSendTxByHash <- txByHash
+	MToSTxByHash <- txByHash
 }
 
 // GetTxs ...
@@ -141,9 +141,9 @@ func (mp *MempoolManager) GetTxNum() int {
 }
 
 // GetMempoolManagerInfo ...
-func (mp *MempoolManager) newMempoolManagerInfo() *MempoolManagerInfo {
+func (mp *MempoolManager) newMempoolInfo() *MempoolInfo {
 	mp.mtx.Lock()
 	defer mp.mtx.Unlock()
 
-	return &MempoolManagerInfo{mp.mempool, mp.txNum}
+	return &MempoolInfo{mp.mempool, mp.txNum}
 }
