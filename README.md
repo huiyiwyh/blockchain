@@ -13,5 +13,5 @@ your wallet address was created
 blockchain createblockchain -address yourwalletaddress
 
 
-blockchain createtx -from walletAddressA -to walletAddressB -amunt n
+blockchain createtx -from walletAddressA -to walletAddressB -amount n
 
