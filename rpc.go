@@ -10,7 +10,7 @@ import (
 
 func getbcm(w http.ResponseWriter, r *http.Request) {
 	CToBGetBCMI <- &Notification{}
-	nbcm := <-BToCSendBCMI
+	nbcm := <-BToCBCMI
 
 	w.Write(nbcm.Hash)
 }

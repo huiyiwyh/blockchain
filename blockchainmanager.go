@@ -75,19 +75,19 @@ func (bcm *BlockchainManager) Processor() {
 // ReturnServerBlockchainManagerInfo returns BlockchainManagerinfo to Server
 func (bcm *BlockchainManager) returnServerBlockchainManagerInfo() {
 	nbcmi := newBlockchainManagerInfo(bcm)
-	BToSSendBCMI <- nbcmi
+	BToSBCMI <- nbcmi
 }
 
 // ReturnCliBlockchainManagerInfo returns BlockchainManagerinfo to cli
 func (bcm *BlockchainManager) returnCliBlockchainManagerInfo() {
 	nbcmi := newBlockchainManagerInfo(bcm)
-	BToCSendBCMI <- nbcmi
+	BToCBCMI <- nbcmi
 }
 
 // ReturnMempoolBlockchainManagerInfo returns BlockchainManagerinfo to mempool
 func (bcm *BlockchainManager) returnMempoolBlockchainManagerInfo() {
 	nbcmi := newBlockchainManagerInfo(bcm)
-	BToMSendBCMI <- nbcmi
+	BToMBCMI <- nbcmi
 }
 
 // returnServerBlockbyHash returns BlockByHash to server
@@ -139,16 +139,20 @@ func (bcm *BlockchainManager) mineBlock(txs []*Transaction) {
 	lastBlock := bcm.getLastBlock()
 	lastHash, lastHeight := lastBlock.Hash, lastBlock.Height
 
+	bcm.changeIsMining(true)
 	newBlock := NewBlock(txs, lastHash, lastHeight+1)
+	bcm.changeIsMining(false)
 	if newBlock == nil {
 		return
 	}
+
 	bcm.addBlock(newBlock)
 
 	UTXOSet := UTXOSet{bcm.Hash}
 	UTXOSet.Reindex()
 
 	BToMTxs <- txs
+	BToSBlock <- newBlock
 }
 
 // GetHeight returns height stored in BlockchainManager
@@ -177,6 +181,14 @@ func (bcm *BlockchainManager) getHash() []byte {
 
 	hash := bcm.Hash[:]
 	return hash[:]
+}
+
+//
+func (bcm *BlockchainManager) changeIsMining(isMining bool) {
+	bcm.mtx.Lock()
+	defer bcm.mtx.Unlock()
+
+	bcm.IsMining = isMining
 }
 
 // getIsMining returns IsMining of the bcm
@@ -281,7 +293,7 @@ func (bcm *BlockchainManager) addBlock(newBlock *Block) {
 		blockInOrphanBlocksHash := o.Get(newBlock.Hash)
 
 		if blockInBlocksHash != nil || blockInOrphanBlocksHash != nil {
-			fmt.Printf("the block %x is in the main chain or orphan pool\n", newBlock.Hash)
+			// fmt.Printf("the block %x is in the main chain or orphan pool\n", newBlock.Hash)
 			return nil
 		}
 
@@ -301,7 +313,7 @@ func (bcm *BlockchainManager) addBlock(newBlock *Block) {
 					if err != nil {
 						log.Panic(err)
 					}
-					fmt.Printf("block %x as mainchain to be added\n", newBlock.Hash)
+					// fmt.Printf("block %x as mainchain to be added\n", newBlock.Hash)
 					falg = true
 					break
 				}
@@ -317,7 +329,7 @@ func (bcm *BlockchainManager) addBlock(newBlock *Block) {
 				if err != nil {
 					log.Panic(err)
 				}
-				fmt.Printf("block %x as sidechain to be added\n", newBlock.Hash)
+				// fmt.Printf("block %x as sidechain to be added\n", newBlock.Hash)
 				falg = true
 				break
 			}
@@ -328,12 +340,12 @@ func (bcm *BlockchainManager) addBlock(newBlock *Block) {
 			if err != nil {
 				log.Panic(err)
 			}
-			fmt.Printf("block %x as orphanblock to be added\n", newBlock.Hash)
+			// fmt.Printf("block %x as orphanblock to be added\n", newBlock.Hash)
 
 			return nil
 		}
 
-		fmt.Println("UpdateOrphanBlock")
+		// fmt.Println("UpdateOrphanBlock")
 		// after newBlock is added ,check the orphan pool whether the orpahan block can be add into Blockchain
 	UpdateOrphanBlock:
 		oc := o.Cursor()
@@ -351,14 +363,14 @@ func (bcm *BlockchainManager) addBlock(newBlock *Block) {
 					if err != nil {
 						log.Panic(err)
 					}
-					fmt.Printf("block %x as mainchain to be added\n", block.Hash)
+					// fmt.Printf("block %x as mainchain to be added\n", block.Hash)
 				} else {
 					timestamp := bcm.getNewSidechainTimestamp(newBlock.Hash)
 					err = b.Put([]byte(timestamp), block.Hash)
 					if err != nil {
 						log.Panic(err)
 					}
-					fmt.Printf("block %x as sidechain to be added\n", block.Hash)
+					// fmt.Printf("block %x as sidechain to be added\n", block.Hash)
 
 					// compare height of the sidechain and mainchain
 					// if sidechain's height higher than the height of mainchain, change the tag of the hash
@@ -379,7 +391,7 @@ func (bcm *BlockchainManager) addBlock(newBlock *Block) {
 						if err != nil {
 							log.Panic(err)
 						}
-						fmt.Println("sidechain change to mainchain")
+						// fmt.Println("sidechain change to mainchain")
 					}
 					break
 				}
@@ -400,7 +412,7 @@ func (bcm *BlockchainManager) addBlock(newBlock *Block) {
 		log.Panic(err)
 	}
 
-	fmt.Println("end")
+	// fmt.Println("end")
 }
 
 // GetCurrentOldestSideChain get current oldest side chain

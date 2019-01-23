@@ -72,7 +72,7 @@ func (u *UTXOSet) VerifyTransaction(tx *Transaction) bool {
 	for _, vin := range tx.Vin {
 		prevTX, err := u.FindTransaction(vin.Txid)
 		if err != nil {
-			log.Println(err)
+			return false
 		}
 		prevTXs[hex.EncodeToString(prevTX.ID)] = prevTX
 	}

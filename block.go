@@ -31,7 +31,7 @@ type BlockHeader struct {
 
 // NewBlock creates and returns Block
 func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int64) *Block {
-	blockHeader := &BlockHeader{BlockVersion, prevBlockHash, []byte{}, time.Now().Unix(), 21, 0}
+	blockHeader := &BlockHeader{BlockVersion, prevBlockHash, []byte{}, time.Now().Unix(), 23, 0}
 	block := &Block{blockHeader, []byte{}, len(transactions), transactions, height}
 	block.BlockHeader.MerkleRootHash = block.HashTransactions()
 	pow := NewProofOfWork(block)

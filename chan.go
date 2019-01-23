@@ -1,10 +1,10 @@
 package main
 
 // BCMToCSendBCM defines a chan that BlockchainManager sends BlockchainManagerInfo to Client
-var BToCSendBCMI chan *BlockchainManagerInfo = make(chan *BlockchainManagerInfo, 20)
+var BToCBCMI chan *BlockchainManagerInfo = make(chan *BlockchainManagerInfo, 20)
 
 // BCMToSSendBCM defines a chan that BlockchainManager sends BlockchainInfo to Server
-var BToSSendBCMI chan *BlockchainManagerInfo = make(chan *BlockchainManagerInfo, 20)
+var BToSBCMI chan *BlockchainManagerInfo = make(chan *BlockchainManagerInfo, 20)
 
 // BCMToSBlocksHash defines a chan that BlockchainManager sends blockshash to Server
 var BToSBlocksHash chan *BlocksHash = make(chan *BlocksHash, 20)
@@ -16,7 +16,10 @@ var BToSBlockByHash chan *BlockByHash = make(chan *BlockByHash, 20)
 var BToMTxs chan []*Transaction = make(chan []*Transaction, 20)
 
 // BCMToMSendBCM defines a chan that BlockchainManager sends BlockchainManagerInfo to MempoolManager
-var BToMSendBCMI chan *BlockchainManagerInfo = make(chan *BlockchainManagerInfo, 20)
+var BToMBCMI chan *BlockchainManagerInfo = make(chan *BlockchainManagerInfo, 20)
+
+// BToSBlock defines a chan that BlockchainManager sends block to Server
+var BToSBlock chan *Block = make(chan *Block, 20)
 
 // MToBCMGetBCM defines a chan that MempoolManager sends GetBlockchainManagerInfo to BlockchainManager
 var MToBGetBCMI chan *Notification = make(chan *Notification, 20)
@@ -28,7 +31,7 @@ var MToBTxs chan []*Transaction = make(chan []*Transaction, 20)
 var MToSTxs chan []*Transaction = make(chan []*Transaction, 20)
 
 // MToSSendM defines a chan that MempoolManager sends MempoolInfo to Server
-var MToSSendMMI chan *MempoolManagerInfo = make(chan *MempoolManagerInfo, 20)
+var MToSMMI chan *MempoolManagerInfo = make(chan *MempoolManagerInfo, 20)
 
 // MToSSendTxByHash defines a chan that MempoolManager sends tx to Server
 var MToSSendTxByHash chan *TxByHash = make(chan *TxByHash, 20)
@@ -48,23 +51,23 @@ var SToBGetBCMI chan *Notification = make(chan *Notification, 20)
 // SToMTx defines a chan that Server sends Tx to MempoolManager
 var SToMTx chan *Transaction = make(chan *Transaction, 20)
 
-// SToMGetM defines a chan that Server sends GetMempoolInfo to MempoolManager
-var SToMGetM chan *Notification = make(chan *Notification, 20)
+// SToMGetM defines a chan that Server sends GetMempoolManagerInfo to MempoolManager
+var SToMGetMMI chan *Notification = make(chan *Notification, 20)
 
 // SToMGetTxByHash defines a chan that Server sends GetTxByHash to MempoolManager
 var SToMGetTxByHash chan *TxByHash = make(chan *TxByHash, 20)
 
-// CToBCMGetBCMI defines a chan that Client sends GetBlockchanManagerInfo to BlockchainManagerInfo
-var CToBGetBCMI chan *Notification = make(chan *Notification, 20)
-
 // SToPPeer defines a chan that Server sends peers to PeerManager
 var SToPPeer chan []string = make(chan []string, 20)
 
-// SToPGetPM defines a chan that Server sends GetPM to PeerManager
+// SToPGetPM defines a chan that Server sends GetPoolManagerInfo to PeerManager
 var SToPGetPMI chan *Notification = make(chan *Notification, 20)
 
+// CToBCMGetBCMI defines a chan that Client sends GetBlockchanManagerInfo to BlockchainManagerInfo
+var CToBGetBCMI chan *Notification = make(chan *Notification, 20)
+
 // PToSSendPM defines a chan that PeerManager sends PeerManagerInfo to Server
-var PToSSendPMI chan *PeerManagerInfo = make(chan *PeerManagerInfo, 20)
+var PToSPMI chan *PeerManagerInfo = make(chan *PeerManagerInfo, 20)
 
 // ReceivedBlock defines a chan that when received a block will stop mining
 var ReceivedBlock chan *Notification = make(chan *Notification, 20)

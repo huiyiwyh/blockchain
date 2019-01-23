@@ -41,13 +41,22 @@ func (pm *PeerManager) AddPeer(peers []string) {
 	for _, v := range peers {
 		if pm.Peers[v] == "" {
 			pm.Peers[v] = v
+			pm.Num++
 		}
 	}
 }
 
 // DeletePeer ...
 func (pm *PeerManager) DeletePeer() {
+	pm.mtx.Lock()
+	defer pm.mtx.Unlock()
 
+	// for _, v := range pm.Peers {
+	// 	if pm.Peers[v] == "" {
+	// 		pm.Peers[v] = v
+	// 		pm.Num++
+	// 	}
+	// }
 }
 
 // GetPeerManagerInfo ...
@@ -56,5 +65,5 @@ func (pm *PeerManager) GetPeerManagerInfo() {
 	defer pm.mtx.Unlock()
 
 	npm := &PeerManagerInfo{pm.Peers, pm.Num}
-	PToSSendPMI <- npm
+	PToSPMI <- npm
 }

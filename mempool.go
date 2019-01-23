@@ -35,7 +35,7 @@ func (mp *MempoolManager) Processor() {
 			go mp.AddTx(tx)
 		case txs := <-BToMTxs:
 			go mp.DeleteTxs(txs)
-		case <-SToMGetM:
+		case <-SToMGetMMI:
 			go mp.returnServerMempoolManagerInfo()
 		case txByHash := <-SToMGetTxByHash:
 			go mp.GetTx(txByHash)
@@ -44,8 +44,8 @@ func (mp *MempoolManager) Processor() {
 }
 
 func (mp *MempoolManager) returnServerMempoolManagerInfo() {
-	nmpm := mp.newMempoolManagerInfo()
-	MToSSendMMI <- nmpm
+	nmm := mp.newMempoolManagerInfo()
+	MToSMMI <- nmm
 }
 
 // MaybeSendTxsToBCM ...
@@ -61,23 +61,24 @@ func (mp *MempoolManager) maybeSendTxsToBCM() {
 		if mp.txNum > 0 {
 			var txs []*Transaction
 
+			MToBGetBCMI <- &Notification{}
+			nbcm := <-BToMBCMI
+
+			u := &UTXOSet{nbcm.Hash}
+
 			for _, tx := range mp.mempool {
-				txs = append(txs, tx)
+				if u.VerifyTransaction(tx) != true {
+					log.Println("ERROR: Invalid transaction")
+				} else {
+					txs = append(txs, tx)
+				}
 				delete(mp.mempool, hex.EncodeToString(tx.ID))
 				mp.txNum--
 			}
 
-			MToBGetBCMI <- &Notification{}
-			nbcm := <-BToMSendBCMI
-
-			u := &UTXOSet{nbcm.Hash}
-
-			for _, tx := range txs {
-				if u.VerifyTransaction(tx) != true {
-					log.Println("ERROR: Invalid transaction")
-				}
+			if len(txs) > 0 {
+				MToBTxs <- txs
 			}
-			MToBTxs <- txs
 		}
 		mp.mtx.Unlock()
 	}
@@ -104,7 +105,6 @@ func (mp *MempoolManager) DeleteTxs(txs []*Transaction) {
 		if mp.mempool[txID] != nil {
 			delete(mp.mempool, txID)
 			mp.txNum--
-			//fmt.Println("a tx was deleted from mempool")
 		}
 	}
 }

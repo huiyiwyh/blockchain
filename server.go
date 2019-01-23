@@ -129,8 +129,8 @@ func sendData(nodeTo string, data []byte) {
 		fmt.Printf("%s is not available\n", nodeTo)
 
 		SToPGetPMI <- &Notification{}
-		npm := <-PToSSendPMI
-		knownNodes := MapToSlice(npm.Peers)
+		npmi := <-PToSPMI
+		knownNodes := MapToSlice(npmi.Peers)
 
 		var updatedNodes []string
 
@@ -306,7 +306,7 @@ func handleVersion(request []byte) {
 	fmt.Printf("Received version command from %s\n", payload.NodeFrom)
 
 	SToBGetBCMI <- &Notification{}
-	nbcm := <-BToSSendBCMI
+	nbcm := <-BToSBCMI
 
 	myBestHeight := nbcm.Height
 	myBlockVersion := nbcm.BlockHeader.Version
@@ -362,16 +362,18 @@ func StartServer(minerAddress string) {
 	bcm := NewBlockchainManager()
 	go bcm.Processor()
 
-	mp := NewMempoolManager()
-	go mp.Processor()
+	mm := NewMempoolManager()
+	go mm.Processor()
 
 	pm := NewPeerManager()
 	go pm.Processor()
 
-	knowNodes := []string{"191.167.2.1:3000", "191.167.2.17:3000", "191.167.1.111:3000", "191.167.1.146:3000"}
+	knowNodes := []string{"191.167.1.111:3000", "191.167.1.146:3000"}
 	SToPPeer <- knowNodes
 
 	go MindOtherNodeVersion()
+
+	go BoardcastMinedBlock()
 
 	for {
 		conn, err := ln.Accept()
@@ -385,9 +387,9 @@ func StartServer(minerAddress string) {
 // GetPeers ...
 func GetPeers() []string {
 	SToPGetPMI <- &Notification{}
-	npm := <-PToSSendPMI
+	npmi := <-PToSPMI
 
-	return MapToSlice(npm.Peers)
+	return MapToSlice(npmi.Peers)
 }
 
 // MindOtherNodeVersion ...
@@ -395,7 +397,7 @@ func MindOtherNodeVersion() {
 	knowNodes := GetPeers()
 
 	SToBGetBCMI <- &Notification{}
-	nbcm := <-BToSSendBCMI
+	nbcm := <-BToSBCMI
 
 	myBestHeight := nbcm.Height
 	myBlockVersion := nbcm.BlockHeader.Version
@@ -425,6 +427,22 @@ func MindOtherNodeBlock(nodeFrom string, block *Block) {
 	for _, node := range knownNodes {
 		if node != localNodeAddress && node != nodeFrom {
 			sendInv(node, "block", [][]byte{block.Hash})
+		}
+	}
+}
+
+func BoardcastMinedBlock() {
+	for {
+		select {
+		case minedblock := <-BToSBlock:
+			knownNodes := GetPeers()
+
+			for _, node := range knownNodes {
+				if node != localNodeAddress {
+					sendInv(node, "block", [][]byte{minedblock.Hash})
+				}
+			}
+		default:
 		}
 	}
 }
