@@ -57,16 +57,21 @@ func (pow *ProofOfWork) Run() (int, []byte) {
 	fmt.Printf("Mining a new block\n")
 CalculateNonce:
 	for nonce < maxNonce {
-		data := pow.prepareData(nonce)
+		select {
+		case <-ReceivedBlock:
+			return -1, nil
+		default:
+			data := pow.prepareData(nonce)
 
-		hash = sha256.Sum256(data)
-		fmt.Printf("\r%x", hash)
-		hashInt.SetBytes(hash[:])
+			hash = sha256.Sum256(data)
+			fmt.Printf("\r%x", hash)
+			hashInt.SetBytes(hash[:])
 
-		if hashInt.Cmp(pow.target) == -1 {
-			break CalculateNonce
-		} else {
-			nonce++
+			if hashInt.Cmp(pow.target) == -1 {
+				break CalculateNonce
+			} else {
+				nonce++
+			}
 		}
 	}
 	fmt.Printf("\nNew block is mined!\n")

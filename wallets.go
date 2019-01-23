@@ -6,7 +6,6 @@ import (
 	"encoding/gob"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 )
 
@@ -61,7 +60,7 @@ func (ws *Wallets) LoadFromFile() error {
 
 	fileContent, err := ioutil.ReadFile(walletFile)
 	if err != nil {
-		log.Panic(err)
+		return err
 	}
 
 	var wallets Wallets
@@ -69,7 +68,7 @@ func (ws *Wallets) LoadFromFile() error {
 	decoder := gob.NewDecoder(bytes.NewReader(fileContent))
 	err = decoder.Decode(&wallets)
 	if err != nil {
-		log.Panic(err)
+		return err
 	}
 
 	ws.Wallets = wallets.Wallets
@@ -78,7 +77,7 @@ func (ws *Wallets) LoadFromFile() error {
 }
 
 // SaveToFile saves wallets to a file
-func (ws Wallets) SaveToFile() {
+func (ws Wallets) SaveToFile() error {
 	var content bytes.Buffer
 
 	gob.Register(elliptic.P256())
@@ -86,11 +85,13 @@ func (ws Wallets) SaveToFile() {
 	encoder := gob.NewEncoder(&content)
 	err := encoder.Encode(ws)
 	if err != nil {
-		log.Panic(err)
+		return err
 	}
 
 	err = ioutil.WriteFile(walletFile, content.Bytes(), 0644)
 	if err != nil {
-		log.Panic(err)
+		return err
 	}
+
+	return nil
 }

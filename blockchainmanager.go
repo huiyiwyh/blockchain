@@ -20,6 +20,7 @@ type BlockchainManager struct {
 	Transactions      []*Transaction
 	Height            int64
 	SidechanTimestamp map[int64]string
+	IsMining          bool
 	mtx               *sync.Mutex
 }
 
@@ -43,6 +44,7 @@ func NewBlockchainManager() *BlockchainManager {
 		block.Transactions,
 		block.Height,
 		make(map[int64]string),
+		false,
 		new(sync.Mutex),
 	}
 }
@@ -52,45 +54,54 @@ func NewBlockchainManager() *BlockchainManager {
 func (bcm *BlockchainManager) Processor() {
 	for {
 		select {
-		case block := <-SToBCMBlock:
+		case block := <-SToBBlock:
 			go bcm.validateBlockIsValidAndAdd(block)
-		case txs := <-MToBCMTxs:
+		case txs := <-MToBTxs:
 			go bcm.mineBlock(txs)
-		case <-CToBCMGetBCM:
+		case <-CToBGetBCMI:
 			go bcm.returnCliBlockchainManagerInfo()
-		case <-SToBCMGetBCM:
+		case <-SToBGetBCMI:
 			go bcm.returnServerBlockchainManagerInfo()
-		case <-MToBCMGetBCM:
+		case <-MToBGetBCMI:
 			go bcm.returnMempoolBlockchainManagerInfo()
-		case blockByHash := <-SToBCMGetBlockByHash:
-			block, err := bcm.getBlockByHash(blockByHash.Hash)
-			if err != nil {
-				fmt.Println(err)
-			}
-			BCMToSBlockByHash <- &BlockByHash{blockByHash.NodeFrom, blockByHash.Hash, block}
-		case blocksHash := <-SToBCMGetBlocksHash:
-			BCMToSBlocksHash <- &BlocksHash{blocksHash.NodeFrom, bcm.getBlocksHash()}
-		default:
+		case blockByHash := <-SToBGetBlockByHash:
+			go bcm.returnServerBlockbyHash(blockByHash)
+		case blocksHash := <-SToBGetBlocksHash:
+			go bcm.returnServerBlocksHash(blocksHash)
 		}
 	}
 }
 
-// ReturnServerBlockchainManagerInfo retuns BlockchainManagerinfo
+// ReturnServerBlockchainManagerInfo returns BlockchainManagerinfo to Server
 func (bcm *BlockchainManager) returnServerBlockchainManagerInfo() {
-	nbcm := newBlockchainManagerInfo(bcm)
-	BCMToSSendBCM <- nbcm
+	nbcmi := newBlockchainManagerInfo(bcm)
+	BToSSendBCMI <- nbcmi
 }
 
-// ReturnCliBlockchainManagerInfo retuns BlockchainManagerinfo
+// ReturnCliBlockchainManagerInfo returns BlockchainManagerinfo to cli
 func (bcm *BlockchainManager) returnCliBlockchainManagerInfo() {
-	nbcm := newBlockchainManagerInfo(bcm)
-	BCMToCSendBCM <- nbcm
+	nbcmi := newBlockchainManagerInfo(bcm)
+	BToCSendBCMI <- nbcmi
 }
 
-// ReturnMempoolBlockchainManagerInfo retuns BlockchainManagerinfo
+// ReturnMempoolBlockchainManagerInfo returns BlockchainManagerinfo to mempool
 func (bcm *BlockchainManager) returnMempoolBlockchainManagerInfo() {
-	nbcm := newBlockchainManagerInfo(bcm)
-	BCMToMSendBCM <- nbcm
+	nbcmi := newBlockchainManagerInfo(bcm)
+	BToMSendBCMI <- nbcmi
+}
+
+// returnServerBlockbyHash returns BlockByHash to server
+func (bcm *BlockchainManager) returnServerBlockbyHash(blockByHash *BlockByHash) {
+	block, err := bcm.getBlockByHash(blockByHash.Hash)
+	if err != nil {
+		fmt.Println(err)
+	}
+	BToSBlockByHash <- &BlockByHash{blockByHash.NodeFrom, blockByHash.Hash, block}
+}
+
+// returnServerBlocksHash returns BlocksHash to server
+func (bcm *BlockchainManager) returnServerBlocksHash(blocksHash *BlocksHash) {
+	BToSBlocksHash <- &BlocksHash{blocksHash.NodeFrom, bcm.getBlocksHash()}
 }
 
 // ValidateBlockIsValidAndAdd refers BlockchainManager will validate the received block
@@ -110,8 +121,8 @@ func (bcm *BlockchainManager) validateBlockIsValidAndAdd(block *Block) {
 	}
 
 	// if block's height is bigger than current height, add the block into Blockchain
-	if block.Height > height {
-		//receiveBlockChan <- true
+	if block.Height > height && bcm.getIsMining() {
+		ReceivedBlock <- &Notification{}
 	}
 
 	bcm.addBlock(block)
@@ -129,13 +140,15 @@ func (bcm *BlockchainManager) mineBlock(txs []*Transaction) {
 	lastHash, lastHeight := lastBlock.Hash, lastBlock.Height
 
 	newBlock := NewBlock(txs, lastHash, lastHeight+1)
-
+	if newBlock == nil {
+		return
+	}
 	bcm.addBlock(newBlock)
 
 	UTXOSet := UTXOSet{bcm.Hash}
 	UTXOSet.Reindex()
 
-	BCMToMTxs <- txs
+	BToMTxs <- txs
 }
 
 // GetHeight returns height stored in BlockchainManager
@@ -164,6 +177,15 @@ func (bcm *BlockchainManager) getHash() []byte {
 
 	hash := bcm.Hash[:]
 	return hash[:]
+}
+
+// getIsMining returns IsMining of the bcm
+func (bcm *BlockchainManager) getIsMining() bool {
+	bcm.mtx.Lock()
+	defer bcm.mtx.Unlock()
+
+	isMining := bcm.IsMining
+	return isMining
 }
 
 // GetBlockByHash finds a block by its hash and returns it

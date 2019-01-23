@@ -9,7 +9,8 @@ import (
 
 func (cli *CLI) createBlockchain(address string) {
 	if !ValidateAddress(address) {
-		log.Panic("ERROR: Address is not valid")
+		log.Println("ERROR: Address is not valid")
+		os.Exit(1)
 	}
 
 	bc := CreateBlockchain(address)
@@ -49,7 +50,7 @@ func (cli *CLI) getblockchaininfo() {
 func (cli *CLI) getblockbyhash(hash []byte) {
 	bc, err := NewBlockchain()
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		os.Exit(1)
 	}
 

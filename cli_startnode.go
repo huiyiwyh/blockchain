@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 )
 
 func (cli *CLI) startNode(minerAddress string) {
@@ -11,7 +12,8 @@ func (cli *CLI) startNode(minerAddress string) {
 		if ValidateAddress(minerAddress) {
 			fmt.Println("Mining is on. Address to receive rewards: ", minerAddress)
 		} else {
-			log.Panic("Wrong miner address!")
+			log.Println("Wrong miner address!")
+			os.Exit(1)
 		}
 	}
 

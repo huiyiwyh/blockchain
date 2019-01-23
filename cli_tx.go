@@ -1,22 +1,23 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 )
 
 func (cli *CLI) createTx(from, to string, amount int) {
 	if !ValidateAddress(from) {
-		log.Panic("ERROR: Sender address is not valid")
+		log.Println("ERROR: Sender address is not valid")
+		os.Exit(1)
 	}
 	if !ValidateAddress(to) {
-		log.Panic("ERROR: Recipient address is not valid")
+		log.Println("ERROR: Recipient address is not valid")
+		os.Exit(1)
 	}
 
 	bc, err := NewBlockchain()
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		os.Exit(1)
 	}
 
@@ -24,8 +25,10 @@ func (cli *CLI) createTx(from, to string, amount int) {
 
 	wallets, err := NewWallets()
 	if err != nil {
-		log.Panic(err)
+		log.Println(err)
+		os.Exit(1)
 	}
+
 	wallet := wallets.GetWallet(from)
 
 	tx := NewUTXOTransaction(&wallet, to, amount, &UTXOSet)

@@ -14,6 +14,12 @@ type MempoolManager struct {
 	mtx     *sync.Mutex
 }
 
+// MempoolManagerInfo ...
+type MempoolManagerInfo struct {
+	mempool map[string]*Transaction
+	txNum   int
+}
+
 // NewMempoolManager returns a new MempoolManager
 func NewMempoolManager() *MempoolManager {
 	return &MempoolManager{make(map[string]*Transaction), 0, new(sync.Mutex)}
@@ -21,24 +27,29 @@ func NewMempoolManager() *MempoolManager {
 
 // Processor manages received txs
 func (mp *MempoolManager) Processor() {
-	go mp.MaybeSendTxsToBCM()
+	go mp.maybeSendTxsToBCM()
 
 	for {
 		select {
 		case tx := <-SToMTx:
 			go mp.AddTx(tx)
-		case txs := <-BCMToMTxs:
+		case txs := <-BToMTxs:
 			go mp.DeleteTxs(txs)
 		case <-SToMGetM:
-			go mp.GetMempoolManagerInfo()
+			go mp.returnServerMempoolManagerInfo()
 		case txByHash := <-SToMGetTxByHash:
 			go mp.GetTx(txByHash)
 		}
 	}
 }
 
+func (mp *MempoolManager) returnServerMempoolManagerInfo() {
+	nmpm := mp.newMempoolManagerInfo()
+	MToSSendMMI <- nmpm
+}
+
 // MaybeSendTxsToBCM ...
-func (mp *MempoolManager) MaybeSendTxsToBCM() {
+func (mp *MempoolManager) maybeSendTxsToBCM() {
 	for {
 		time.Sleep(1 * time.Second)
 		mp.mtx.Lock()
@@ -56,8 +67,8 @@ func (mp *MempoolManager) MaybeSendTxsToBCM() {
 				mp.txNum--
 			}
 
-			MToBCMGetBCM <- &Notification{}
-			nbcm := <-BCMToMSendBCM
+			MToBGetBCMI <- &Notification{}
+			nbcm := <-BToMSendBCMI
 
 			u := &UTXOSet{nbcm.Hash}
 
@@ -66,7 +77,7 @@ func (mp *MempoolManager) MaybeSendTxsToBCM() {
 					log.Println("ERROR: Invalid transaction")
 				}
 			}
-			MToBCMTxs <- txs
+			MToBTxs <- txs
 		}
 		mp.mtx.Unlock()
 	}
@@ -130,11 +141,9 @@ func (mp *MempoolManager) GetTxNum() int {
 }
 
 // GetMempoolManagerInfo ...
-func (mp *MempoolManager) GetMempoolManagerInfo() {
+func (mp *MempoolManager) newMempoolManagerInfo() *MempoolManagerInfo {
 	mp.mtx.Lock()
 	defer mp.mtx.Unlock()
 
-	nmp := &MempoolManager{mp.mempool, mp.txNum, nil}
-
-	MToSSendM <- nmp
+	return &MempoolManagerInfo{mp.mempool, mp.txNum}
 }

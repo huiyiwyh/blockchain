@@ -128,8 +128,8 @@ func sendData(nodeTo string, data []byte) {
 	if err != nil {
 		fmt.Printf("%s is not available\n", nodeTo)
 
-		SToPGetPM <- &Notification{}
-		npm := <-PToSSendPM
+		SToPGetPMI <- &Notification{}
+		npm := <-PToSSendPMI
 		knownNodes := MapToSlice(npm.Peers)
 
 		var updatedNodes []string
@@ -169,7 +169,7 @@ func handleBlock(request []byte) {
 
 	fmt.Printf("Recevied a new block! from %s\n", payload.NodeFrom)
 
-	SToBCMBlock <- block
+	SToBBlock <- block
 
 	if len(blocksInTransit) > 0 {
 		blockHash := blocksInTransit[0]
@@ -233,8 +233,8 @@ func handleGetBlocks(request []byte) {
 
 	fmt.Printf("Received getblocks command from %s\n", payload.NodeFrom)
 
-	SToBCMGetBlocksHash <- &BlocksHash{payload.NodeFrom, nil}
-	blockByHash := <-BCMToSBlocksHash
+	SToBGetBlocksHash <- &BlocksHash{payload.NodeFrom, nil}
+	blockByHash := <-BToSBlocksHash
 
 	sendInv(blockByHash.NodeFrom, "block", blockByHash.Hashs)
 }
@@ -253,9 +253,9 @@ func handleGetData(request []byte) {
 	fmt.Printf("Received getdata command from %s\n", payload.NodeFrom)
 
 	if payload.Type == "block" {
-		SToBCMGetBlockByHash <- &BlockByHash{payload.NodeFrom, payload.ID, nil}
+		SToBGetBlockByHash <- &BlockByHash{payload.NodeFrom, payload.ID, nil}
 
-		if blockByHash := <-BCMToSBlockByHash; blockByHash.Block != nil {
+		if blockByHash := <-BToSBlockByHash; blockByHash.Block != nil {
 			sendBlock(blockByHash.NodeFrom, blockByHash.Block)
 		}
 	}
@@ -305,8 +305,8 @@ func handleVersion(request []byte) {
 
 	fmt.Printf("Received version command from %s\n", payload.NodeFrom)
 
-	SToBCMGetBCM <- &Notification{}
-	nbcm := <-BCMToSSendBCM
+	SToBGetBCMI <- &Notification{}
+	nbcm := <-BToSSendBCMI
 
 	myBestHeight := nbcm.Height
 	myBlockVersion := nbcm.BlockHeader.Version
@@ -384,8 +384,8 @@ func StartServer(minerAddress string) {
 
 // GetPeers ...
 func GetPeers() []string {
-	SToPGetPM <- &Notification{}
-	npm := <-PToSSendPM
+	SToPGetPMI <- &Notification{}
+	npm := <-PToSSendPMI
 
 	return MapToSlice(npm.Peers)
 }
@@ -394,8 +394,8 @@ func GetPeers() []string {
 func MindOtherNodeVersion() {
 	knowNodes := GetPeers()
 
-	SToBCMGetBCM <- &Notification{}
-	nbcm := <-BCMToSSendBCM
+	SToBGetBCMI <- &Notification{}
+	nbcm := <-BToSSendBCMI
 
 	myBestHeight := nbcm.Height
 	myBlockVersion := nbcm.BlockHeader.Version
@@ -421,6 +421,7 @@ func MindOtherNodeTx(nodeFrom string, tx *Transaction) {
 // MindOtherNodeBlock ...
 func MindOtherNodeBlock(nodeFrom string, block *Block) {
 	knownNodes := GetPeers()
+
 	for _, node := range knownNodes {
 		if node != localNodeAddress && node != nodeFrom {
 			sendInv(node, "block", [][]byte{block.Hash})

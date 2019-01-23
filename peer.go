@@ -26,7 +26,7 @@ func (pm *PeerManager) Processor() {
 		select {
 		case peers := <-SToPPeer:
 			go pm.AddPeer(peers)
-		case <-SToPGetPM:
+		case <-SToPGetPMI:
 			go pm.GetPeerManagerInfo()
 		default:
 		}
@@ -56,5 +56,5 @@ func (pm *PeerManager) GetPeerManagerInfo() {
 	defer pm.mtx.Unlock()
 
 	npm := &PeerManagerInfo{pm.Peers, pm.Num}
-	PToSSendPM <- npm
+	PToSSendPMI <- npm
 }
